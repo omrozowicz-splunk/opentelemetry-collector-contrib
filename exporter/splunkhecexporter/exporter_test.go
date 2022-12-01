@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -44,6 +45,20 @@ import (
 )
 
 func TestNew(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		panic(err)
+	}
+	capture := CapturingData{testing: t, receivedRequest: nil, statusCode: 200}
+	s := &http.Server{
+		Handler: &capture,
+	}
+	defer s.Close()
+	go func() {
+		if e := s.Serve(listener); e != http.ErrServerClosed {
+			require.NoError(t, e)
+		}
+	}()
 	buildInfo := component.NewDefaultBuildInfo()
 	got, err := createExporter(nil, zap.NewNop(), &buildInfo)
 	assert.EqualError(t, err, "nil config")
@@ -51,7 +66,7 @@ func TestNew(t *testing.T) {
 
 	config := &Config{
 		Token:           "someToken",
-		Endpoint:        "https://example.com:8088",
+		Endpoint:        "http://" + listener.Addr().String(),
 		TimeoutSettings: exporterhelper.TimeoutSettings{Timeout: 1 * time.Second},
 	}
 	got, err = createExporter(config, zap.NewNop(), &buildInfo)
@@ -60,7 +75,7 @@ func TestNew(t *testing.T) {
 
 	config = &Config{
 		Token:           "someToken",
-		Endpoint:        "https://example.com:8088",
+		Endpoint:        "http://" + listener.Addr().String(),
 		TimeoutSettings: exporterhelper.TimeoutSettings{Timeout: 1 * time.Second},
 		TLSSetting: configtls.TLSClientSetting{
 			TLSSetting: configtls.TLSSetting{
@@ -77,6 +92,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestConsumeMetricsData(t *testing.T) {
+
 	smallBatch := pmetric.NewMetrics()
 	smallBatch.ResourceMetrics().AppendEmpty().Resource().Attributes().PutStr("com.splunk.source", "test_splunk")
 	m := smallBatch.ResourceMetrics().At(0).ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
@@ -162,20 +178,14 @@ func TestConsumeMetricsData(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mux := http.NewServeMux()
-			mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if tt.reqTestFunc != nil {
 					tt.reqTestFunc(t, r)
 				}
 				w.WriteHeader(tt.httpResponseCode)
-			})
-
-			mux.HandleFunc("/services/collector/health", func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(200)
-			})
-
-			server := httptest.NewServer(mux)
+			}))
 			defer server.Close()
+
 			serverURL, err := url.Parse(server.URL)
 			assert.NoError(t, err)
 
@@ -306,19 +316,13 @@ func TestConsumeLogsData(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mux := http.NewServeMux()
-			mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if tt.reqTestFunc != nil {
 					tt.reqTestFunc(t, r)
 				}
 				w.WriteHeader(tt.httpResponseCode)
-			})
-
-			mux.HandleFunc("/services/collector/health", func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(200)
-			})
-
-			server := httptest.NewServer(mux)
+			}))
+			defer server.Close()
 
 			serverURL, err := url.Parse(server.URL)
 			assert.NoError(t, err)
@@ -351,9 +355,23 @@ func TestConsumeLogsData(t *testing.T) {
 }
 
 func TestExporterStartAlwaysReturnsNil(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		panic(err)
+	}
+	capture := CapturingData{testing: t, receivedRequest: nil, statusCode: 200}
+	s := &http.Server{
+		Handler: &capture,
+	}
+	defer s.Close()
+	go func() {
+		if e := s.Serve(listener); e != http.ErrServerClosed {
+			require.NoError(t, e)
+		}
+	}()
 	buildInfo := component.NewDefaultBuildInfo()
 	config := &Config{
-		Endpoint: "https://example.com:8088",
+		Endpoint: "http://" + listener.Addr().String(),
 		Token:    "abc",
 	}
 	e, err := createExporter(config, zap.NewNop(), &buildInfo)

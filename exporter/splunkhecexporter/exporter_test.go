@@ -45,20 +45,6 @@ import (
 )
 
 func TestNew(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		panic(err)
-	}
-	capture := CapturingData{testing: t, receivedRequest: nil, statusCode: 200}
-	s := &http.Server{
-		Handler: &capture,
-	}
-	defer s.Close()
-	go func() {
-		if e := s.Serve(listener); e != http.ErrServerClosed {
-			require.NoError(t, e)
-		}
-	}()
 	buildInfo := component.NewDefaultBuildInfo()
 	got, err := createExporter(nil, zap.NewNop(), &buildInfo)
 	assert.EqualError(t, err, "nil config")
@@ -66,7 +52,7 @@ func TestNew(t *testing.T) {
 
 	config := &Config{
 		Token:           "someToken",
-		Endpoint:        "http://" + listener.Addr().String(),
+		Endpoint:        "https://example.com:8088",
 		TimeoutSettings: exporterhelper.TimeoutSettings{Timeout: 1 * time.Second},
 	}
 	got, err = createExporter(config, zap.NewNop(), &buildInfo)
@@ -75,7 +61,7 @@ func TestNew(t *testing.T) {
 
 	config = &Config{
 		Token:           "someToken",
-		Endpoint:        "http://" + listener.Addr().String(),
+		Endpoint:        "https://example.com:8088",
 		TimeoutSettings: exporterhelper.TimeoutSettings{Timeout: 1 * time.Second},
 		TLSSetting: configtls.TLSClientSetting{
 			TLSSetting: configtls.TLSSetting{
@@ -91,8 +77,73 @@ func TestNew(t *testing.T) {
 	require.Nil(t, got)
 }
 
-func TestConsumeMetricsData(t *testing.T) {
+func TestNewWithHealthCheckSuccess(t *testing.T) {
 
+	rr := make(chan receivedRequest)
+	capture := CapturingData{receivedRequest: rr, statusCode: 200}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		panic(err)
+	}
+	s := &http.Server{
+		Handler: &capture,
+	}
+	defer s.Close()
+	go func() {
+		if e := s.Serve(listener); e != http.ErrServerClosed {
+			require.NoError(t, e)
+		}
+	}()
+
+	endpoint := "http://" + listener.Addr().String() + "/services/collector/health"
+
+	config := &Config{
+		Token:                "someToken",
+		Endpoint:             endpoint,
+		TimeoutSettings:      exporterhelper.TimeoutSettings{Timeout: 1 * time.Second},
+		HecHealthCheckEnable: true,
+	}
+	buildInfo := component.NewDefaultBuildInfo()
+	got, err := createExporter(config, zap.NewNop(), &buildInfo)
+	assert.NoError(t, err)
+	require.NotNil(t, got)
+
+}
+
+func TestNewWithHealthCheckFail(t *testing.T) {
+
+	rr := make(chan receivedRequest)
+	capture := CapturingData{receivedRequest: rr, statusCode: 500}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		panic(err)
+	}
+	s := &http.Server{
+		Handler: &capture,
+	}
+	defer s.Close()
+	go func() {
+		if e := s.Serve(listener); e != http.ErrServerClosed {
+			require.NoError(t, e)
+		}
+	}()
+
+	endpoint := "http://" + listener.Addr().String() + "/services/collector/health"
+
+	config := &Config{
+		Token:                "someToken",
+		Endpoint:             endpoint,
+		TimeoutSettings:      exporterhelper.TimeoutSettings{Timeout: 1 * time.Second},
+		HecHealthCheckEnable: true,
+	}
+	buildInfo := component.NewDefaultBuildInfo()
+	got, err := createExporter(config, zap.NewNop(), &buildInfo)
+	assert.Error(t, err)
+	require.Nil(t, got)
+
+}
+
+func TestConsumeMetricsData(t *testing.T) {
 	smallBatch := pmetric.NewMetrics()
 	smallBatch.ResourceMetrics().AppendEmpty().Resource().Attributes().PutStr("com.splunk.source", "test_splunk")
 	m := smallBatch.ResourceMetrics().At(0).ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
@@ -355,23 +406,9 @@ func TestConsumeLogsData(t *testing.T) {
 }
 
 func TestExporterStartAlwaysReturnsNil(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		panic(err)
-	}
-	capture := CapturingData{testing: t, receivedRequest: nil, statusCode: 200}
-	s := &http.Server{
-		Handler: &capture,
-	}
-	defer s.Close()
-	go func() {
-		if e := s.Serve(listener); e != http.ErrServerClosed {
-			require.NoError(t, e)
-		}
-	}()
 	buildInfo := component.NewDefaultBuildInfo()
 	config := &Config{
-		Endpoint: "http://" + listener.Addr().String(),
+		Endpoint: "https://example.com:8088",
 		Token:    "abc",
 	}
 	e, err := createExporter(config, zap.NewNop(), &buildInfo)

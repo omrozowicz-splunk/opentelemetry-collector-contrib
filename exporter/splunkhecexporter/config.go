@@ -110,6 +110,8 @@ type Config struct {
 
 	// HealthPath for health API, default is '/services/collector/health'
 	HealthPath string `mapstructure:"health_path"`
+
+	HecHealthCheckEnable bool `mapstructure:"hec_health_check_enable"`
 }
 
 func (cfg *Config) getOptionsFromConfig() (*exporterOptions, error) {

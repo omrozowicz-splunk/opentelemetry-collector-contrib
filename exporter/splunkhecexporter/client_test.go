@@ -237,10 +237,7 @@ func runMetricsExport(cfg *Config, metrics pmetric.Metrics, expectedBatchesNum i
 	for {
 		select {
 		case request := <-rr:
-			// ignoring healthCheck calls, that are returning an empty body
-			if len(request.body) > 0 {
-				requests = append(requests, request)
-			}
+			requests = append(requests, request)
 			if len(requests) == expectedBatchesNum {
 				return requests, nil
 			}
@@ -292,10 +289,7 @@ func runTraceExport(testConfig *Config, traces ptrace.Traces, expectedBatchesNum
 	for {
 		select {
 		case request := <-rr:
-			// ignoring healthCheck calls, that are returning an empty body
-			if len(request.body) > 0 {
-				requests = append(requests, request)
-			}
+			requests = append(requests, request)
 			if len(requests) == expectedBatchesNum {
 				// sort the requests according to the traces we received, reordering them so we can assert on their size.
 				sort.Slice(requests, func(i, j int) bool {
@@ -355,10 +349,7 @@ func runLogExport(cfg *Config, ld plog.Logs, expectedBatchesNum int, t *testing.
 	for {
 		select {
 		case request := <-rr:
-			// ignoring healthCheck calls, that are returning an empty body
-			if len(request.body) > 0 {
-				requests = append(requests, request)
-			}
+			requests = append(requests, request)
 			if len(requests) == expectedBatchesNum {
 				return requests, nil
 			}
@@ -837,16 +828,12 @@ func TestReceiveMetricsWithCompression(t *testing.T) {
 func TestErrorReceived(t *testing.T) {
 	rr := make(chan receivedRequest)
 	capture := CapturingData{receivedRequest: rr, statusCode: 500}
-	capture_health := CapturingData{receivedRequest: rr, statusCode: 200}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		panic(err)
 	}
-	mux := http.NewServeMux()
-	mux.Handle("/services/collector", &capture)
-	mux.Handle("/services/collector/health", &capture_health)
 	s := &http.Server{
-		Handler: mux,
+		Handler: &capture,
 	}
 	defer s.Close()
 	go func() {
@@ -909,8 +896,16 @@ func TestInvalidURL(t *testing.T) {
 	cfg.Endpoint = "ftp://example.com:134"
 	cfg.Token = "1234-1234"
 	params := componenttest.NewNopExporterCreateSettings()
-	_, err := factory.CreateTracesExporter(context.Background(), params, cfg)
-	assert.Contains(t, err.Error(), "Get \"ftp://example.com:134/services/collector/health\": unsupported protocol scheme \"ftp\"")
+	exporter, err := factory.CreateTracesExporter(context.Background(), params, cfg)
+	assert.NoError(t, err)
+	assert.NoError(t, exporter.Start(context.Background(), componenttest.NewNopHost()))
+	defer func() {
+		assert.NoError(t, exporter.Shutdown(context.Background()))
+	}()
+	td := createTraceData(2)
+
+	err = exporter.ConsumeTraces(context.Background(), td)
+	assert.EqualError(t, err, "Post \"ftp://example.com:134/services/collector\": unsupported protocol scheme \"ftp\"")
 }
 
 type badJSON struct {

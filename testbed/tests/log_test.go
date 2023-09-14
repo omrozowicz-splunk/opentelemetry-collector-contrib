@@ -7,10 +7,10 @@
 package tests
 
 import (
-	"testing"
-
 	"github.com/open-telemetry/opentelemetry-collector-contrib/testbed/datareceivers"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/testbed/datasenders"
+	"testing"
+
 	"github.com/open-telemetry/opentelemetry-collector-contrib/testbed/testbed"
 )
 
@@ -24,7 +24,16 @@ func TestLog10kDPS(t *testing.T) {
 	}{
 		{
 			name:     "OTLP",
-			sender:   testbed.NewOTLPLogsDataSender(testbed.DefaultHost, testbed.GetAvailablePort(t)),
+			sender:   testbed.NewOTLPLogsDataSender(testbed.DefaultHost, testbed.GetAvailablePort(t), false),
+			receiver: testbed.NewOTLPDataReceiver(testbed.GetAvailablePort(t)),
+			resourceSpec: testbed.ResourceSpec{
+				ExpectedMaxCPU: 30,
+				ExpectedMaxRAM: 120,
+			},
+		},
+		{
+			name:     "OTLP-sendingQueue",
+			sender:   testbed.NewOTLPLogsDataSender(testbed.DefaultHost, testbed.GetAvailablePort(t), true),
 			receiver: testbed.NewOTLPDataReceiver(testbed.GetAvailablePort(t)),
 			resourceSpec: testbed.ResourceSpec{
 				ExpectedMaxCPU: 30,
@@ -33,7 +42,16 @@ func TestLog10kDPS(t *testing.T) {
 		},
 		{
 			name:     "OTLP-HTTP",
-			sender:   testbed.NewOTLPHTTPLogsDataSender(testbed.DefaultHost, testbed.GetAvailablePort(t)),
+			sender:   testbed.NewOTLPHTTPLogsDataSender(testbed.DefaultHost, testbed.GetAvailablePort(t), false),
+			receiver: testbed.NewOTLPHTTPDataReceiver(testbed.GetAvailablePort(t)),
+			resourceSpec: testbed.ResourceSpec{
+				ExpectedMaxCPU: 30,
+				ExpectedMaxRAM: 120,
+			},
+		},
+		{
+			name:     "OTLP-HTTP-sendingQueue",
+			sender:   testbed.NewOTLPHTTPLogsDataSender(testbed.DefaultHost, testbed.GetAvailablePort(t), true),
 			receiver: testbed.NewOTLPHTTPDataReceiver(testbed.GetAvailablePort(t)),
 			resourceSpec: testbed.ResourceSpec{
 				ExpectedMaxCPU: 30,
@@ -151,6 +169,55 @@ func TestLog10kDPS(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			Scenario10kItemsPerSecond(
+				t,
+				test.sender,
+				test.receiver,
+				test.resourceSpec,
+				performanceResultsSummary,
+				processors,
+				test.extensions,
+			)
+		})
+	}
+}
+
+func TestLog40kDPSsendingQueues(t *testing.T) {
+	tests := []struct {
+		name         string
+		sender       testbed.DataSender
+		receiver     testbed.DataReceiver
+		resourceSpec testbed.ResourceSpec
+		extensions   map[string]string
+	}{
+		{
+			name:     "OTLP-sendingQueue",
+			sender:   testbed.NewOTLPLogsDataSender(testbed.DefaultHost, testbed.GetAvailablePort(t), true),
+			receiver: testbed.NewOTLPDataReceiver(testbed.GetAvailablePort(t)),
+			resourceSpec: testbed.ResourceSpec{
+				ExpectedMaxCPU: 50,
+				ExpectedMaxRAM: 120,
+			},
+		},
+		{
+			name:     "OTLP-HTTP-sendingQueue",
+			sender:   testbed.NewOTLPHTTPLogsDataSender(testbed.DefaultHost, testbed.GetAvailablePort(t), true),
+			receiver: testbed.NewOTLPHTTPDataReceiver(testbed.GetAvailablePort(t)),
+			resourceSpec: testbed.ResourceSpec{
+				ExpectedMaxCPU: 50,
+				ExpectedMaxRAM: 120,
+			},
+		},
+	}
+
+	processors := map[string]string{
+		"batch": `
+  batch:
+`,
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			Scenario40kItemsPerSecond(
 				t,
 				test.sender,
 				test.receiver,

@@ -97,7 +97,7 @@ func getResourceProcessorTestCases() []resourceProcessorTestCase {
 }
 
 func TestMetricResourceProcessor(t *testing.T) {
-	sender := testbed.NewOTLPMetricDataSender(testbed.DefaultHost, testbed.GetAvailablePort(t))
+	sender := testbed.NewOTLPMetricDataSender(testbed.DefaultHost, testbed.GetAvailablePort(t), false)
 	receiver := testbed.NewOTLPDataReceiver(testbed.GetAvailablePort(t))
 
 	tests := getResourceProcessorTestCases()

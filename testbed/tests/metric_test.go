@@ -48,7 +48,7 @@ func TestMetric10kDPS(t *testing.T) {
 		},
 		{
 			name:     "OTLP",
-			sender:   testbed.NewOTLPMetricDataSender(testbed.DefaultHost, testbed.GetAvailablePort(t)),
+			sender:   testbed.NewOTLPMetricDataSender(testbed.DefaultHost, testbed.GetAvailablePort(t), false),
 			receiver: testbed.NewOTLPDataReceiver(testbed.GetAvailablePort(t)),
 			resourceSpec: testbed.ResourceSpec{
 				ExpectedMaxCPU: 60,
@@ -57,7 +57,7 @@ func TestMetric10kDPS(t *testing.T) {
 		},
 		{
 			name:     "OTLP-HTTP",
-			sender:   testbed.NewOTLPHTTPMetricDataSender(testbed.DefaultHost, testbed.GetAvailablePort(t)),
+			sender:   testbed.NewOTLPHTTPMetricDataSender(testbed.DefaultHost, testbed.GetAvailablePort(t), false),
 			receiver: testbed.NewOTLPHTTPDataReceiver(testbed.GetAvailablePort(t)),
 			resourceSpec: testbed.ResourceSpec{
 				ExpectedMaxCPU: 60,
@@ -112,7 +112,7 @@ func TestMetricsFromFile(t *testing.T) {
 	}
 	agentProc := testbed.NewChildProcessCollector()
 
-	sender := testbed.NewOTLPMetricDataSender(testbed.DefaultHost, testbed.GetAvailablePort(t))
+	sender := testbed.NewOTLPMetricDataSender(testbed.DefaultHost, testbed.GetAvailablePort(t), false)
 	receiver := testbed.NewOTLPDataReceiver(testbed.GetAvailablePort(t))
 
 	configStr := createConfigYaml(t, sender, receiver, resultDir, nil, nil)

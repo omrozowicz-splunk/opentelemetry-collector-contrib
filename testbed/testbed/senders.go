@@ -63,8 +63,9 @@ type LogDataSender interface {
 }
 
 type DataSenderBase struct {
-	Port int
-	Host string
+	Port                int
+	Host                string
+	SendingQueueEnabled bool
 }
 
 func (dsb *DataSenderBase) GetEndpoint() net.Addr {
@@ -84,9 +85,9 @@ type otlpHTTPDataSender struct {
 func (ods *otlpHTTPDataSender) fillConfig(cfg *otlphttpexporter.Config) *otlphttpexporter.Config {
 	cfg.Endpoint = fmt.Sprintf("http://%s", ods.GetEndpoint())
 	// Disable retries, we should push data and if error just log it.
-	cfg.RetrySettings.Enabled = false
+	cfg.RetrySettings.Enabled = ods.SendingQueueEnabled
 	// Disable sending queue, we should push data from the caller goroutine.
-	cfg.QueueSettings.Enabled = false
+	cfg.QueueSettings.Enabled = ods.SendingQueueEnabled
 	cfg.TLSSetting = configtls.TLSClientSetting{
 		Insecure: true,
 	}
@@ -114,12 +115,13 @@ type otlpHTTPTraceDataSender struct {
 }
 
 // NewOTLPHTTPTraceDataSender creates a new TraceDataSender for OTLP/HTTP traces exporter.
-func NewOTLPHTTPTraceDataSender(host string, port int, compression configcompression.CompressionType) TraceDataSender {
+func NewOTLPHTTPTraceDataSender(host string, port int, compression configcompression.CompressionType, sendingQueues bool) TraceDataSender {
 	return &otlpHTTPTraceDataSender{
 		otlpHTTPDataSender: otlpHTTPDataSender{
 			DataSenderBase: DataSenderBase{
-				Port: port,
-				Host: host,
+				Port:                port,
+				Host:                host,
+				SendingQueueEnabled: sendingQueues,
 			},
 			compression: compression,
 		},
@@ -149,12 +151,13 @@ type otlpHTTPMetricsDataSender struct {
 
 // NewOTLPHTTPMetricDataSender creates a new OTLP/HTTP metrics exporter sender that will send
 // to the specified port after Start is called.
-func NewOTLPHTTPMetricDataSender(host string, port int) MetricDataSender {
+func NewOTLPHTTPMetricDataSender(host string, port int, sendingQueues bool) MetricDataSender {
 	return &otlpHTTPMetricsDataSender{
 		otlpHTTPDataSender: otlpHTTPDataSender{
 			DataSenderBase: DataSenderBase{
-				Port: port,
-				Host: host,
+				Port:                port,
+				Host:                host,
+				SendingQueueEnabled: sendingQueues,
 			},
 		},
 	}
@@ -183,12 +186,13 @@ type otlpHTTPLogsDataSender struct {
 
 // NewOTLPHTTPLogsDataSender creates a new OTLP/HTTP logs exporter sender that will send
 // to the specified port after Start is called.
-func NewOTLPHTTPLogsDataSender(host string, port int) LogDataSender {
+func NewOTLPHTTPLogsDataSender(host string, port int, sendingQueues bool) LogDataSender {
 	return &otlpHTTPLogsDataSender{
 		otlpHTTPDataSender: otlpHTTPDataSender{
 			DataSenderBase: DataSenderBase{
-				Port: port,
-				Host: host,
+				Port:                port,
+				Host:                host,
+				SendingQueueEnabled: sendingQueues,
 			},
 		},
 	}
@@ -216,9 +220,9 @@ type otlpDataSender struct {
 func (ods *otlpDataSender) fillConfig(cfg *otlpexporter.Config) *otlpexporter.Config {
 	cfg.Endpoint = ods.GetEndpoint().String()
 	// Disable retries, we should push data and if error just log it.
-	cfg.RetrySettings.Enabled = false
+	cfg.RetrySettings.Enabled = ods.SendingQueueEnabled
 	// Disable sending queue, we should push data from the caller goroutine.
-	cfg.QueueSettings.Enabled = false
+	cfg.QueueSettings.Enabled = ods.SendingQueueEnabled
 	cfg.TLSSetting = configtls.TLSClientSetting{
 		Insecure: true,
 	}
@@ -245,12 +249,13 @@ type otlpTraceDataSender struct {
 }
 
 // NewOTLPTraceDataSender creates a new TraceDataSender for OTLP traces exporter.
-func NewOTLPTraceDataSender(host string, port int) TraceDataSender {
+func NewOTLPTraceDataSender(host string, port int, sendingQueues bool) TraceDataSender {
 	return &otlpTraceDataSender{
 		otlpDataSender: otlpDataSender{
 			DataSenderBase: DataSenderBase{
-				Port: port,
-				Host: host,
+				Port:                port,
+				Host:                host,
+				SendingQueueEnabled: sendingQueues,
 			},
 		},
 	}
@@ -279,12 +284,13 @@ type otlpMetricsDataSender struct {
 
 // NewOTLPMetricDataSender creates a new OTLP metric exporter sender that will send
 // to the specified port after Start is called.
-func NewOTLPMetricDataSender(host string, port int) MetricDataSender {
+func NewOTLPMetricDataSender(host string, port int, sendingQueues bool) MetricDataSender {
 	return &otlpMetricsDataSender{
 		otlpDataSender: otlpDataSender{
 			DataSenderBase: DataSenderBase{
-				Port: port,
-				Host: host,
+				Port:                port,
+				Host:                host,
+				SendingQueueEnabled: sendingQueues,
 			},
 		},
 	}
@@ -313,12 +319,13 @@ type otlpLogsDataSender struct {
 
 // NewOTLPLogsDataSender creates a new OTLP logs exporter sender that will send
 // to the specified port after Start is called.
-func NewOTLPLogsDataSender(host string, port int) LogDataSender {
+func NewOTLPLogsDataSender(host string, port int, sendingQueues bool) LogDataSender {
 	return &otlpLogsDataSender{
 		otlpDataSender: otlpDataSender{
 			DataSenderBase: DataSenderBase{
-				Port: port,
-				Host: host,
+				Port:                port,
+				Host:                host,
+				SendingQueueEnabled: sendingQueues,
 			},
 		},
 	}

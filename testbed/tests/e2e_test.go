@@ -26,7 +26,7 @@ func TestIdleMode(t *testing.T) {
 	resultDir, err := filepath.Abs(filepath.Join("results", t.Name()))
 	require.NoError(t, err)
 
-	sender := testbed.NewOTLPTraceDataSender(testbed.DefaultHost, testbed.GetAvailablePort(t))
+	sender := testbed.NewOTLPTraceDataSender(testbed.DefaultHost, testbed.GetAvailablePort(t), false)
 	receiver := testbed.NewOTLPDataReceiver(testbed.GetAvailablePort(t))
 	cfg := createConfigYaml(t, sender, receiver, resultDir, nil, nil)
 	cp := testbed.NewChildProcessCollector()
@@ -68,12 +68,11 @@ func TestBallastMemory(t *testing.T) {
 
 	resultDir, err := filepath.Abs(filepath.Join("results", t.Name()))
 	require.NoError(t, err)
-
 	options := testbed.LoadOptions{DataItemsPerSecond: 10_000, ItemsPerBatch: 10}
 	dataProvider := testbed.NewPerfTestDataProvider(options)
 	for _, test := range tests {
 		t.Run(fmt.Sprintf("ballast-size-%d", test.ballastSize), func(t *testing.T) {
-			sender := testbed.NewOTLPTraceDataSender(testbed.DefaultHost, testbed.GetAvailablePort(t))
+			sender := testbed.NewOTLPTraceDataSender(testbed.DefaultHost, testbed.GetAvailablePort(t), false)
 			receiver := testbed.NewOTLPDataReceiver(testbed.GetAvailablePort(t))
 			ballastCfg := createConfigYaml(
 				t, sender, receiver, resultDir, nil,
@@ -98,7 +97,9 @@ func TestBallastMemory(t *testing.T) {
 					},
 				),
 			)
+			tc.StartBackend()
 			tc.StartAgent()
+			tc.StartLoad(options)
 
 			var rss, vms uint32
 			// It is possible that the process is not ready or the ballast code path

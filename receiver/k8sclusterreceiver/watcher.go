@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -95,10 +96,45 @@ func newResourceWatcher(set receiver.CreateSettings, cfg *Config, metadataStore 
 	}
 }
 
+func getValidObjects(client kubernetes.Interface) (map[string][]*schema.GroupVersionKind, error) {
+	res, err := client.Discovery().ServerPreferredResources()
+
+	if err != nil {
+		fmt.Printf("Error getting API resources: %v\n", err)
+		return nil, err
+	}
+
+	validObjects := make(map[string][]*schema.GroupVersionKind)
+	for _, group := range res {
+		split := strings.Split(group.GroupVersion, "/")
+		if len(split) == 1 && group.GroupVersion == "v1" {
+			split = []string{"", "v1"}
+		}
+		for _, resource := range group.APIResources {
+			validObjects[resource.Name] = append(validObjects[resource.Name], &schema.GroupVersionKind{
+				Group:   split[0],
+				Version: split[1],
+				Kind:    resource.Kind,
+			})
+		}
+	}
+	return validObjects, nil
+}
+
 func (rw *resourceWatcher) initialize() error {
 	client, err := rw.makeClient(rw.config.APIConfig)
+
+	fmt.Printf("Valid objects are: \n")
+	validObjects, err := getValidObjects(client)
+	for _, objects := range validObjects {
+		for _, obj := range objects {
+			fmt.Printf("Group: %s, Version %s, Kind: %s \n", obj.Group, obj.Version, obj.Kind)
+		}
+	}
+	fmt.Printf("Valid objects are: %v", validObjects)
+
 	if err != nil {
-		return fmt.Errorf("Failed to create Kubernnetes client: %w", err)
+		return fmt.Errorf("Failed to create Kubernetes client: %w", err)
 	}
 	rw.client = client
 

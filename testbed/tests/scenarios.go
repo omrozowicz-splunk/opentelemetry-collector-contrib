@@ -304,6 +304,60 @@ func ScenarioTestTraceNoBackend10kSPS(
 	assert.Less(t, configuration.ExpectedMinFinalRAM, rss)
 }
 
+func Scenario3000ItemsPerSecond(
+	t *testing.T,
+	sender testbed.DataSender,
+	receiver testbed.DataReceiver,
+	resourceSpec testbed.ResourceSpec,
+	resultsSummary testbed.TestResultsSummary,
+	processors map[string]string,
+	extensions map[string]string,
+) {
+	resultDir, err := filepath.Abs(path.Join("results", t.Name()))
+	require.NoError(t, err)
+
+	options := testbed.LoadOptions{
+		DataItemsPerSecond: 3000,
+		ItemsPerBatch:      100,
+		Parallel:           1,
+	}
+	agentProc := testbed.NewChildProcessCollector()
+
+	configStr := createConfigYaml(t, sender, receiver, resultDir, processors, extensions)
+	configCleanup, err := agentProc.PrepareConfig(configStr)
+	require.NoError(t, err)
+	defer configCleanup()
+	dataProvider := testbed.NewPerfTestDataProvider(options)
+	tc := testbed.NewTestCase(
+		t,
+		dataProvider,
+		sender,
+		receiver,
+		agentProc,
+		&testbed.LogPresentValidator{},
+		resultsSummary,
+		testbed.WithResourceLimits(resourceSpec),
+		testbed.WithDecision(1),
+	)
+	defer tc.Stop()
+
+	tc.StartBackend()
+	tc.StartAgent()
+
+	tc.StartLoad(options)
+
+	tc.Sleep(tc.Duration)
+
+	tc.StopLoad()
+
+	tc.WaitFor(func() bool { return tc.LoadGenerator.DataItemsSent() > 0 }, "load generator started")
+	tc.WaitFor(func() bool { return tc.SearchText("sending_queue is full") }, "sending_queue errors present")
+
+	tc.StopAgent()
+
+	tc.ValidateData()
+}
+
 func constructLoadOptions(test TestCase) testbed.LoadOptions {
 	options := testbed.LoadOptions{DataItemsPerSecond: 1000, ItemsPerBatch: 10}
 	options.Attributes = make(map[string]string)

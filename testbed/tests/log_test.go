@@ -162,3 +162,53 @@ func TestLog10kDPS(t *testing.T) {
 		})
 	}
 }
+
+func TestLogOtlpSendingQueue(t *testing.T) {
+	otlpReceiver := testbed.NewOTLPDataReceiver(testbed.GetAvailablePort(t))
+	otlpReceiver.WithQueue(`
+    sending_queue:
+      queue_size: 10
+      num_consumers: 1
+`)
+	otlpReceiver.WithRetry(`
+    retry_on_failure:
+      enabled: true
+`)
+	tests := []struct {
+		name         string
+		sender       testbed.DataSender
+		receiver     testbed.DataReceiver
+		resourceSpec testbed.ResourceSpec
+		extensions   map[string]string
+	}{
+		{
+			name:     "OTLP",
+			sender:   testbed.NewOTLPLogsDataSender(testbed.DefaultHost, testbed.GetAvailablePort(t)),
+			receiver: otlpReceiver,
+			resourceSpec: testbed.ResourceSpec{
+				ExpectedMaxCPU: 80,
+				ExpectedMaxRAM: 120,
+			},
+		},
+	}
+
+	processors := map[string]string{
+		"batch": `
+  batch:
+`,
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			Scenario3000ItemsPerSecond(
+				t,
+				test.sender,
+				test.receiver,
+				test.resourceSpec,
+				performanceResultsSummary,
+				processors,
+				test.extensions,
+			)
+		})
+	}
+}

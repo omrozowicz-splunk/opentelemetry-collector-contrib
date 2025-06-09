@@ -8,39 +8,152 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/iancoleman/strcase"
 )
 
+// PathExpressionParser is how a context provides OTTL access to all its Paths.
 type PathExpressionParser[K any] func(Path[K]) (GetSetter[K], error)
 
+// EnumParser is how a context provides OTTL access to all its Enums.
 type EnumParser func(*EnumSymbol) (*Enum, error)
 
+// Enum is how OTTL represents an enum's numeric value.
 type Enum int64
 
+// EnumSymbol is how OTTL represents an enum's string value.
 type EnumSymbol string
 
-func newPath[K any](fields []field) (*basePath[K], error) {
-	if len(fields) == 0 {
-		return nil, fmt.Errorf("cannot make a path from zero fields")
+func buildOriginalText(path *path) string {
+	var builder strings.Builder
+	if path.Context != "" {
+		builder.WriteString(path.Context)
+		if len(path.Fields) > 0 {
+			builder.WriteString(".")
+		}
 	}
+	for i, f := range path.Fields {
+		builder.WriteString(f.Name)
+		if len(f.Keys) > 0 {
+			builder.WriteString(buildOriginalKeysText(f.Keys))
+		}
+		if i != len(path.Fields)-1 {
+			builder.WriteString(".")
+		}
+	}
+	return builder.String()
+}
+
+func buildOriginalKeysText(keys []key) string {
+	var builder strings.Builder
+	if len(keys) > 0 {
+		for _, k := range keys {
+			builder.WriteString("[")
+			if k.Int != nil {
+				builder.WriteString(strconv.FormatInt(*k.Int, 10))
+			}
+			if k.String != nil {
+				builder.WriteString(*k.String)
+			}
+			if k.Expression != nil {
+				if k.Expression.Path != nil {
+					builder.WriteString(buildOriginalText(k.Expression.Path))
+				}
+				if k.Expression.Float != nil {
+					builder.WriteString(strconv.FormatFloat(*k.Expression.Float, 'f', 10, 64))
+				}
+				if k.Expression.Int != nil {
+					builder.WriteString(strconv.FormatInt(*k.Expression.Int, 10))
+				}
+			}
+			builder.WriteString("]")
+		}
+	}
+	return builder.String()
+}
+
+func (p *Parser[K]) newPath(path *path) (*basePath[K], error) {
+	if len(path.Fields) == 0 {
+		return nil, errors.New("cannot make a path from zero fields")
+	}
+
+	pathContext, fields, err := p.parsePathContext(path)
+	if err != nil {
+		return nil, err
+	}
+
+	originalText := buildOriginalText(path)
 	var current *basePath[K]
 	for i := len(fields) - 1; i >= 0; i-- {
+		keys, err := p.newKeys(fields[i].Keys)
+		if err != nil {
+			return nil, err
+		}
 		current = &basePath[K]{
-			name:     fields[i].Name,
-			key:      newKey[K](fields[i].Keys),
-			nextPath: current,
+			context:      pathContext,
+			name:         fields[i].Name,
+			keys:         keys,
+			nextPath:     current,
+			originalText: originalText,
 		}
 	}
 	current.fetched = true
+	current.originalText = originalText
 	return current, nil
+}
+
+func (p *Parser[K]) parsePathContext(path *path) (string, []field, error) {
+	hasPathContextNames := len(p.pathContextNames) > 0
+	if path.Context != "" {
+		// no pathContextNames means the Parser isn't handling the grammar path's context yet,
+		// so it falls back to the previous behavior with the path.Context value as the first
+		// path's segment.
+		if !hasPathContextNames {
+			return "", append([]field{{Name: path.Context}}, path.Fields...), nil
+		}
+
+		if _, ok := p.pathContextNames[path.Context]; !ok {
+			return "", path.Fields, fmt.Errorf(`context "%s" from path "%s" is not valid, it must be replaced by one of: %s`, path.Context, buildOriginalText(path), p.buildPathContextNamesText(""))
+		}
+
+		return path.Context, path.Fields, nil
+	}
+
+	if hasPathContextNames {
+		originalText := buildOriginalText(path)
+		return "", nil, fmt.Errorf(`missing context name for path "%s", possibly valid options are: %s`, originalText, p.buildPathContextNamesText(originalText))
+	}
+
+	return "", path.Fields, nil
+}
+
+func (p *Parser[K]) buildPathContextNamesText(path string) string {
+	var builder strings.Builder
+	var suffix string
+	if path != "" {
+		suffix = "." + path
+	}
+
+	i := 0
+	for ctx := range p.pathContextNames {
+		builder.WriteString(fmt.Sprintf(`"%s%s"`, ctx, suffix))
+		if i != len(p.pathContextNames)-1 {
+			builder.WriteString(", ")
+		}
+		i++
+	}
+	return builder.String()
 }
 
 // Path represents a chain of path parts in an OTTL statement, such as `body.string`.
 // A Path has a name, and potentially a set of keys.
 // If the path in the OTTL statement contains multiple parts (separated by a dot (`.`)), then the Path will have a pointer to the next Path.
 type Path[K any] interface {
+	// Context is the OTTL context name of this Path.
+	Context() string
+
 	// Name is the name of this segment of the path.
 	Name() string
 
@@ -48,18 +161,28 @@ type Path[K any] interface {
 	// Will return nil if there is no next path.
 	Next() Path[K]
 
-	// Key provides the Key for this Path.
-	// Will return nil if there is no Key.
-	Key() Key[K]
+	// Keys provides the Keys for this Path.
+	// Will return nil if there are no Keys.
+	Keys() []Key[K]
+
+	// String returns a string representation of this Path and the next Paths
+	String() string
 }
 
 var _ Path[any] = &basePath[any]{}
 
 type basePath[K any] struct {
-	name     string
-	key      *baseKey[K]
-	nextPath *basePath[K]
-	fetched  bool
+	context      string
+	name         string
+	keys         []Key[K]
+	nextPath     *basePath[K]
+	fetched      bool
+	fetchedKeys  bool
+	originalText string
+}
+
+func (p *basePath[K]) Context() string {
+	return p.context
 }
 
 func (p *basePath[K]) Name() string {
@@ -74,16 +197,24 @@ func (p *basePath[K]) Next() Path[K] {
 	return p.nextPath
 }
 
-func (p *basePath[K]) Key() Key[K] {
-	if p.key == nil {
+func (p *basePath[K]) Keys() []Key[K] {
+	if p.keys == nil {
 		return nil
 	}
-	return p.key
+	p.fetchedKeys = true
+	return p.keys
+}
+
+func (p *basePath[K]) String() string {
+	return p.originalText
 }
 
 func (p *basePath[K]) isComplete() error {
 	if !p.fetched {
 		return fmt.Errorf("the path section %q was not used by the context - this likely means you are using extra path sections", p.name)
+	}
+	if p.keys != nil && !p.fetchedKeys {
+		return fmt.Errorf("the keys indexing %q were not used by the context - this likely means you are trying to index a path that does not support indexing", p.name)
 	}
 	if p.nextPath == nil {
 		return nil
@@ -91,19 +222,43 @@ func (p *basePath[K]) isComplete() error {
 	return p.nextPath.isComplete()
 }
 
-func newKey[K any](keys []key) *baseKey[K] {
+func (p *Parser[K]) newKeys(keys []key) ([]Key[K], error) {
 	if len(keys) == 0 {
-		return nil
+		return nil, nil
 	}
-	var current *baseKey[K]
-	for i := len(keys) - 1; i >= 0; i-- {
-		current = &baseKey[K]{
-			s:       keys[i].String,
-			i:       keys[i].Int,
-			nextKey: current,
+	ks := make([]Key[K], len(keys))
+	for i := range keys {
+		var getter Getter[K]
+		if keys[i].Expression != nil {
+			if keys[i].Expression.Path != nil {
+				g, err := p.buildGetSetterFromPath(keys[i].Expression.Path)
+				if err != nil {
+					return nil, err
+				}
+				getter = g
+			}
+			if keys[i].Expression.Converter != nil {
+				g, err := p.newGetterFromConverter(*keys[i].Expression.Converter)
+				if err != nil {
+					return nil, err
+				}
+				getter = g
+			}
+		}
+		if keys[i].MathExpression != nil {
+			g, err := p.evaluateMathExpression(keys[i].MathExpression)
+			if err != nil {
+				return nil, err
+			}
+			getter = g
+		}
+		ks[i] = &baseKey[K]{
+			s: keys[i].String,
+			i: keys[i].Int,
+			g: getter,
 		}
 	}
-	return current
+	return ks, nil
 }
 
 // Key represents a chain of keys in an OTTL statement, such as `attributes["foo"]["bar"]`.
@@ -120,17 +275,19 @@ type Key[K any] interface {
 	// If Key experiences an error retrieving the value it is returned.
 	Int(context.Context, K) (*int64, error)
 
-	// Next provides the next Key.
-	// Will return nil if there is no next Key.
-	Next() Key[K]
+	// ExpressionGetter returns a Getter to the expression, that can be
+	// part of the path.
+	// If the Key does not have an expression the returned value is nil.
+	// If Key experiences an error retrieving the value it is returned.
+	ExpressionGetter(context.Context, K) (Getter[K], error)
 }
 
 var _ Key[any] = &baseKey[any]{}
 
 type baseKey[K any] struct {
-	s       *string
-	i       *int64
-	nextKey *baseKey[K]
+	s *string
+	i *int64
+	g Getter[K]
 }
 
 func (k *baseKey[K]) String(_ context.Context, _ K) (*string, error) {
@@ -141,11 +298,8 @@ func (k *baseKey[K]) Int(_ context.Context, _ K) (*int64, error) {
 	return k.i, nil
 }
 
-func (k *baseKey[K]) Next() Key[K] {
-	if k.nextKey == nil {
-		return nil
-	}
-	return k.nextKey
+func (k *baseKey[K]) ExpressionGetter(_ context.Context, _ K) (Getter[K], error) {
+	return k.g, nil
 }
 
 func (p *Parser[K]) parsePath(ip *basePath[K]) (GetSetter[K], error) {
@@ -256,10 +410,10 @@ func (p *Parser[K]) buildArgs(ed editor, argsVal reflect.Value) error {
 			switch {
 			case arg.Value.Enum != nil:
 				name = string(*arg.Value.Enum)
-			case arg.Value.FunctionName != nil:
-				name = *arg.Value.FunctionName
+			case arg.FunctionName != nil:
+				name = *arg.FunctionName
 			default:
-				return fmt.Errorf("invalid function name given")
+				return errors.New("invalid function name given")
 			}
 			f, ok := p.functions[name]
 			if !ok {
@@ -289,7 +443,7 @@ func (p *Parser[K]) buildSliceArg(argVal value, argType reflect.Type) (any, erro
 	switch {
 	case name == reflect.Uint8.String():
 		if argVal.Bytes == nil {
-			return nil, fmt.Errorf("slice parameter must be a byte slice literal")
+			return nil, errors.New("slice parameter must be a byte slice literal")
 		}
 		return ([]byte)(*argVal.Bytes), nil
 	case name == reflect.String.String():
@@ -375,6 +529,18 @@ func (p *Parser[K]) buildSliceArg(argVal value, argType reflect.Type) (any, erro
 	}
 }
 
+func (p *Parser[K]) buildGetSetterFromPath(path *path) (GetSetter[K], error) {
+	np, err := p.newPath(path)
+	if err != nil {
+		return nil, err
+	}
+	arg, err := p.parsePath(np)
+	if err != nil {
+		return nil, err
+	}
+	return arg, nil
+}
+
 // Handle interfaces that can be passed as arguments to OTTL functions.
 func (p *Parser[K]) buildArg(argVal value, argType reflect.Type) (any, error) {
 	name := argType.Name()
@@ -382,18 +548,10 @@ func (p *Parser[K]) buildArg(argVal value, argType reflect.Type) (any, error) {
 	case strings.HasPrefix(name, "Setter"):
 		fallthrough
 	case strings.HasPrefix(name, "GetSetter"):
-		if argVal.Literal == nil || argVal.Literal.Path == nil {
-			return nil, fmt.Errorf("must be a path")
+		if argVal.Literal != nil && argVal.Literal.Path != nil {
+			return p.buildGetSetterFromPath(argVal.Literal.Path)
 		}
-		np, err := newPath[K](argVal.Literal.Path.Fields)
-		if err != nil {
-			return nil, err
-		}
-		arg, err := p.parsePath(np)
-		if err != nil {
-			return nil, err
-		}
-		return arg, nil
+		return nil, errors.New("must be a path")
 	case strings.HasPrefix(name, "Getter"):
 		arg, err := p.newGetter(argVal)
 		if err != nil {
@@ -436,6 +594,16 @@ func (p *Parser[K]) buildArg(argVal value, argType reflect.Type) (any, error) {
 			return nil, err
 		}
 		return StandardIntLikeGetter[K]{Getter: arg.Get}, nil
+	case strings.HasPrefix(name, "PMapGetSetter"):
+		if argVal.Literal == nil || argVal.Literal.Path == nil {
+			return nil, errors.New("must be a path")
+		}
+		pathGetSetter, err := p.buildGetSetterFromPath(argVal.Literal.Path)
+		if err != nil {
+			return nil, err
+		}
+		stdMapGetter := StandardPMapGetter[K]{Getter: pathGetSetter.Get}
+		return StandardPMapGetSetter[K]{Getter: stdMapGetter.Get, Setter: pathGetSetter.Set}, nil
 	case strings.HasPrefix(name, "PMapGetter"):
 		arg, err := p.newGetter(argVal)
 		if err != nil {
@@ -466,30 +634,36 @@ func (p *Parser[K]) buildArg(argVal value, argType reflect.Type) (any, error) {
 			return nil, err
 		}
 		return StandardBoolLikeGetter[K]{Getter: arg.Get}, nil
+	case strings.HasPrefix(name, "ByteSliceLikeGetter"):
+		arg, err := p.newGetter(argVal)
+		if err != nil {
+			return nil, err
+		}
+		return StandardByteSliceLikeGetter[K]{Getter: arg.Get}, nil
 	case name == "Enum":
 		arg, err := p.enumParser((*EnumSymbol)(argVal.Enum))
 		if err != nil {
-			return nil, fmt.Errorf("must be an Enum")
+			return nil, errors.New("must be an Enum")
 		}
 		return *arg, nil
 	case name == reflect.String.String():
 		if argVal.String == nil {
-			return nil, fmt.Errorf("must be a string")
+			return nil, errors.New("must be a string")
 		}
 		return *argVal.String, nil
 	case name == reflect.Float64.String():
 		if argVal.Literal == nil || argVal.Literal.Float == nil {
-			return nil, fmt.Errorf("must be a float")
+			return nil, errors.New("must be a float")
 		}
 		return *argVal.Literal.Float, nil
 	case name == reflect.Int64.String():
 		if argVal.Literal == nil || argVal.Literal.Int == nil {
-			return nil, fmt.Errorf("must be an int")
+			return nil, errors.New("must be an int")
 		}
 		return *argVal.Literal.Int, nil
 	case name == reflect.Bool.String():
 		if argVal.Bool == nil {
-			return nil, fmt.Errorf("must be a bool")
+			return nil, errors.New("must be a bool")
 		}
 		return bool(*argVal.Bool), nil
 	default:
@@ -538,13 +712,13 @@ type optionalManager interface {
 	get() reflect.Value
 }
 
+// Optional is used to represent an optional function argument
 type Optional[T any] struct {
 	val      T
 	hasValue bool
 }
 
 // This is called only by reflection.
-// nolint:unused
 func (o Optional[T]) set(val any) reflect.Value {
 	return reflect.ValueOf(Optional[T]{
 		val:      val.(T),
@@ -568,7 +742,7 @@ func (o Optional[T]) get() reflect.Value {
 	return reflect.ValueOf(o).MethodByName("Get").Call(nil)[0]
 }
 
-// Allows creating an Optional with a value already populated for use in testing
+// NewTestingOptional allows creating an Optional with a value already populated for use in testing
 // OTTL functions.
 func NewTestingOptional[T any](val T) Optional[T] {
 	return Optional[T]{

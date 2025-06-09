@@ -3,8 +3,9 @@ type: resource
 status:
   class: processor
   stability:
+    development: [profiles]
     beta: [traces, metrics, logs]
-  distributions: [core, contrib, splunk, observiq, sumo, aws, redhat, liatrio]
+  distributions: [core, contrib, k8s]
   codeowners:
     active: [dmitryax]
 

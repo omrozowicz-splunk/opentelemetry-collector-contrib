@@ -11,9 +11,7 @@ import (
 	"time"
 )
 
-var (
-	defaultPollInterval = 5 * time.Minute
-)
+var defaultPollInterval = 5 * time.Minute
 
 // Config is the overall config structure for the awscloudwatchmetricsreceiver
 type Config struct {
@@ -22,12 +20,18 @@ type Config struct {
 	IMDSEndpoint string         `mapstructure:"imds_endpoint"`
 	PollInterval time.Duration  `mapstructure:"poll_interval"`
 	Metrics      *MetricsConfig `mapstructure:"metrics"`
+
+	// prevent unkeyed literal initialization
+	_ struct{}
 }
 
 // MetricsConfig is the configuration for the metrics part of the receiver
 // added this so we could expand to other inputs such as autodiscover
 type MetricsConfig struct {
 	Names []*NamedConfig `mapstructure:"named"`
+
+	// prevent unkeyed literal initialization
+	_ struct{}
 }
 
 // NamesConfig is the configuration for the metric namespace and metric names
@@ -44,6 +48,9 @@ type NamedConfig struct {
 type MetricDimensionsConfig struct {
 	Name  string `mapstructure:"Name"`
 	Value string `mapstructure:"Value"`
+
+	// prevent unkeyed literal initialization
+	_ struct{}
 }
 
 var (

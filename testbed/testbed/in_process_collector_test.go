@@ -9,12 +9,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/common/testutil"
 )
 
 func TestNewInProcessPipeline(t *testing.T) {
 	factories, err := Components()
 	assert.NoError(t, err)
-	sender := NewOTLPTraceDataSender(DefaultHost, GetAvailablePort(t))
+	sender := NewOTLPTraceDataSender(DefaultHost, testutil.GetAvailablePort(t))
 	receiver := NewOTLPDataReceiver(DefaultOTLPPort)
 	runner, ok := NewInProcessCollector(factories).(*inProcessCollector)
 	require.True(t, ok)
@@ -34,6 +36,14 @@ service:
       receivers: [%v]
       processors: [batch]
       exporters: [%v]
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: '127.0.0.1'
+                port: %d
 `
 	config := fmt.Sprintf(
 		format,
@@ -41,8 +51,9 @@ service:
 		receiver.GenConfigYAMLStr(),
 		sender.ProtocolName(),
 		receiver.ProtocolName(),
+		testutil.GetAvailablePort(t),
 	)
-	configCleanup, cfgErr := runner.PrepareConfig(config)
+	configCleanup, cfgErr := runner.PrepareConfig(t, config)
 	defer configCleanup()
 	assert.NoError(t, cfgErr)
 	assert.NotNil(t, configCleanup)

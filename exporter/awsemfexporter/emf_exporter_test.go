@@ -8,7 +8,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/smithy-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -19,6 +19,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awsemfexporter/internal/metadata"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/aws/cwlogs"
 )
 
@@ -28,20 +29,28 @@ type mockPusher struct {
 	mock.Mock
 }
 
-func (p *mockPusher) AddLogEntry(_ *cwlogs.Event) error {
+func (p *mockPusher) AddLogEntry(_ context.Context, _ *cwlogs.Event) error {
 	args := p.Called(nil)
 	errorStr := args.String(0)
 	if errorStr != "" {
-		return awserr.NewRequestFailure(nil, 400, "").(error)
+		return &smithy.GenericAPIError{
+			Code:    "",
+			Message: "",
+			Fault:   smithy.FaultClient,
+		}
 	}
 	return nil
 }
 
-func (p *mockPusher) ForceFlush() error {
+func (p *mockPusher) ForceFlush(_ context.Context) error {
 	args := p.Called(nil)
 	errorStr := args.String(0)
 	if errorStr != "" {
-		return awserr.NewRequestFailure(nil, 400, "").(error)
+		return &smithy.GenericAPIError{
+			Code:    "",
+			Message: "",
+			Fault:   smithy.FaultClient,
+		}
 	}
 	return nil
 }
@@ -53,8 +62,8 @@ func TestConsumeMetrics(t *testing.T) {
 	expCfg := factory.CreateDefaultConfig().(*Config)
 	expCfg.Region = "us-west-2"
 	expCfg.MaxRetries = 0
-	exp, err := newEmfExporter(expCfg, exportertest.NewNopCreateSettings())
-	assert.Nil(t, err)
+	exp, err := newEmfExporter(ctx, expCfg, exportertest.NewNopSettings(metadata.Type))
+	assert.NoError(t, err)
 	assert.NotNil(t, exp)
 
 	md := generateTestMetrics(testMetric{
@@ -71,7 +80,7 @@ func TestConsumeMetricsWithNaNValues(t *testing.T) {
 		generateFunc func(string) pmetric.Metrics
 	}{
 		{
-			"histograme-with-nan",
+			"histogram-with-nan",
 			generateTestHistogramMetricWithNaNs,
 		}, {
 			"gauge-with-nan",
@@ -94,15 +103,14 @@ func TestConsumeMetricsWithNaNValues(t *testing.T) {
 			expCfg.Region = "us-west-2"
 			expCfg.MaxRetries = 0
 			expCfg.OutputDestination = "stdout"
-			exp, err := newEmfExporter(expCfg, exportertest.NewNopCreateSettings())
-			assert.Nil(t, err)
+			exp, err := newEmfExporter(ctx, expCfg, exportertest.NewNopSettings(metadata.Type))
+			assert.NoError(t, err)
 			assert.NotNil(t, exp)
 			md := tc.generateFunc(tc.testName)
 			require.NoError(t, exp.pushMetricsData(ctx, md))
 			require.NoError(t, exp.shutdown(ctx))
 		})
 	}
-
 }
 
 func TestConsumeMetricsWithInfValues(t *testing.T) {
@@ -111,7 +119,7 @@ func TestConsumeMetricsWithInfValues(t *testing.T) {
 		generateFunc func(string) pmetric.Metrics
 	}{
 		{
-			"histograme-with-inf",
+			"histogram-with-inf",
 			generateTestHistogramMetricWithInfs,
 		}, {
 			"gauge-with-inf",
@@ -134,15 +142,14 @@ func TestConsumeMetricsWithInfValues(t *testing.T) {
 			expCfg.Region = "us-west-2"
 			expCfg.MaxRetries = 0
 			expCfg.OutputDestination = "stdout"
-			exp, err := newEmfExporter(expCfg, exportertest.NewNopCreateSettings())
-			assert.Nil(t, err)
+			exp, err := newEmfExporter(ctx, expCfg, exportertest.NewNopSettings(metadata.Type))
+			assert.NoError(t, err)
 			assert.NotNil(t, exp)
 			md := tc.generateFunc(tc.testName)
 			require.NoError(t, exp.pushMetricsData(ctx, md))
 			require.NoError(t, exp.shutdown(ctx))
 		})
 	}
-
 }
 
 func TestConsumeMetricsWithOutputDestination(t *testing.T) {
@@ -153,8 +160,8 @@ func TestConsumeMetricsWithOutputDestination(t *testing.T) {
 	expCfg.Region = "us-west-2"
 	expCfg.MaxRetries = 0
 	expCfg.OutputDestination = "stdout"
-	exp, err := newEmfExporter(expCfg, exportertest.NewNopCreateSettings())
-	assert.Nil(t, err)
+	exp, err := newEmfExporter(ctx, expCfg, exportertest.NewNopSettings(metadata.Type))
+	assert.NoError(t, err)
 	assert.NotNil(t, exp)
 
 	md := generateTestMetrics(testMetric{
@@ -174,8 +181,8 @@ func TestConsumeMetricsWithLogGroupStreamConfig(t *testing.T) {
 	expCfg.MaxRetries = defaultRetryCount
 	expCfg.LogGroupName = "test-logGroupName"
 	expCfg.LogStreamName = "test-logStreamName"
-	exp, err := newEmfExporter(expCfg, exportertest.NewNopCreateSettings())
-	assert.Nil(t, err)
+	exp, err := newEmfExporter(ctx, expCfg, exportertest.NewNopSettings(metadata.Type))
+	assert.NoError(t, err)
 	assert.NotNil(t, exp)
 
 	md := generateTestMetrics(testMetric{
@@ -201,8 +208,8 @@ func TestConsumeMetricsWithLogGroupStreamValidPlaceholder(t *testing.T) {
 	expCfg.MaxRetries = defaultRetryCount
 	expCfg.LogGroupName = "/aws/ecs/containerinsights/{ClusterName}/performance"
 	expCfg.LogStreamName = "{TaskId}"
-	exp, err := newEmfExporter(expCfg, exportertest.NewNopCreateSettings())
-	assert.Nil(t, err)
+	exp, err := newEmfExporter(ctx, expCfg, exportertest.NewNopSettings(metadata.Type))
+	assert.NoError(t, err)
 	assert.NotNil(t, exp)
 
 	md := generateTestMetrics(testMetric{
@@ -232,8 +239,8 @@ func TestConsumeMetricsWithOnlyLogStreamPlaceholder(t *testing.T) {
 	expCfg.MaxRetries = defaultRetryCount
 	expCfg.LogGroupName = "test-logGroupName"
 	expCfg.LogStreamName = "{TaskId}"
-	exp, err := newEmfExporter(expCfg, exportertest.NewNopCreateSettings())
-	assert.Nil(t, err)
+	exp, err := newEmfExporter(ctx, expCfg, exportertest.NewNopSettings(metadata.Type))
+	assert.NoError(t, err)
 	assert.NotNil(t, exp)
 
 	md := generateTestMetrics(testMetric{
@@ -263,8 +270,8 @@ func TestConsumeMetricsWithWrongPlaceholder(t *testing.T) {
 	expCfg.MaxRetries = defaultRetryCount
 	expCfg.LogGroupName = "test-logGroupName"
 	expCfg.LogStreamName = "{WrongKey}"
-	exp, err := newEmfExporter(expCfg, exportertest.NewNopCreateSettings())
-	assert.Nil(t, err)
+	exp, err := newEmfExporter(ctx, expCfg, exportertest.NewNopSettings(metadata.Type))
+	assert.NoError(t, err)
 	assert.NotNil(t, exp)
 
 	md := generateTestMetrics(testMetric{
@@ -294,8 +301,8 @@ func TestPushMetricsDataWithErr(t *testing.T) {
 	expCfg.MaxRetries = 0
 	expCfg.LogGroupName = "test-logGroupName"
 	expCfg.LogStreamName = "test-logStreamName"
-	exp, err := newEmfExporter(expCfg, exportertest.NewNopCreateSettings())
-	assert.Nil(t, err)
+	exp, err := newEmfExporter(ctx, expCfg, exportertest.NewNopSettings(metadata.Type))
+	assert.NoError(t, err)
 	assert.NotNil(t, exp)
 
 	logPusher := new(mockPusher)
@@ -314,22 +321,23 @@ func TestPushMetricsDataWithErr(t *testing.T) {
 		metricNames:  []string{"metric_1", "metric_2"},
 		metricValues: [][]float64{{100}, {4}},
 	})
-	assert.NotNil(t, exp.pushMetricsData(ctx, md))
-	assert.NotNil(t, exp.pushMetricsData(ctx, md))
-	assert.Nil(t, exp.pushMetricsData(ctx, md))
-	assert.Nil(t, exp.shutdown(ctx))
+	assert.Error(t, exp.pushMetricsData(ctx, md))
+	assert.Error(t, exp.pushMetricsData(ctx, md))
+	assert.NoError(t, exp.pushMetricsData(ctx, md))
+	assert.NoError(t, exp.shutdown(ctx))
 }
 
 func TestNewExporterWithoutConfig(t *testing.T) {
 	factory := NewFactory()
 	expCfg := factory.CreateDefaultConfig().(*Config)
-	settings := exportertest.NewNopCreateSettings()
+	settings := exportertest.NewNopSettings(metadata.Type)
 	t.Setenv("AWS_STS_REGIONAL_ENDPOINTS", "fake")
 
-	exp, err := newEmfExporter(expCfg, settings)
-	assert.NotNil(t, err)
+	ctx := context.Background()
+	exp, err := newEmfExporter(ctx, expCfg, settings)
+	assert.Error(t, err)
 	assert.Nil(t, exp)
-	assert.Equal(t, settings.Logger, expCfg.logger)
+	assert.Equal(t, expCfg.logger, settings.Logger)
 }
 
 func TestNewExporterWithMetricDeclarations(t *testing.T) {
@@ -360,19 +368,20 @@ func TestNewExporterWithMetricDeclarations(t *testing.T) {
 	expCfg.MetricDeclarations = mds
 
 	obs, logs := observer.New(zap.WarnLevel)
-	params := exportertest.NewNopCreateSettings()
+	params := exportertest.NewNopSettings(metadata.Type)
 	params.Logger = zap.New(obs)
 
-	exp, err := newEmfExporter(expCfg, params)
-	assert.Nil(t, err)
+	ctx := context.Background()
+	exp, err := newEmfExporter(ctx, expCfg, params)
+	assert.NoError(t, err)
 	assert.NotNil(t, exp)
 	err = expCfg.Validate()
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// Invalid metric declaration should be filtered out
-	assert.Equal(t, 3, len(exp.config.MetricDeclarations))
+	assert.Len(t, exp.config.MetricDeclarations, 3)
 	// Invalid dimensions (> 10 dims) should be filtered out
-	assert.Equal(t, 1, len(exp.config.MetricDeclarations[2].Dimensions))
+	assert.Len(t, exp.config.MetricDeclarations[2].Dimensions, 1)
 
 	// Test output warning logs
 	expectedLogs := []observer.LoggedEntry{
@@ -396,16 +405,25 @@ func TestNewExporterWithMetricDeclarations(t *testing.T) {
 }
 
 func TestNewExporterWithoutSession(t *testing.T) {
-	exp, err := newEmfExporter(nil, exportertest.NewNopCreateSettings())
-	assert.NotNil(t, err)
+	ctx := context.Background()
+	exp, err := newEmfExporter(ctx, nil, exportertest.NewNopSettings(metadata.Type))
+	assert.Error(t, err)
 	assert.Nil(t, exp)
 }
 
 func TestWrapErrorIfBadRequest(t *testing.T) {
-	awsErr := awserr.NewRequestFailure(nil, 400, "").(error)
+	awsErr := &smithy.GenericAPIError{
+		Code:    "",
+		Message: "",
+		Fault:   smithy.FaultClient,
+	}
 	err := wrapErrorIfBadRequest(awsErr)
 	assert.True(t, consumererror.IsPermanent(err))
-	awsErr = awserr.NewRequestFailure(nil, 500, "").(error)
+	awsErr = &smithy.GenericAPIError{
+		Code:    "",
+		Message: "",
+		Fault:   smithy.FaultServer,
+	}
 	err = wrapErrorIfBadRequest(awsErr)
 	assert.False(t, consumererror.IsPermanent(err))
 }
@@ -415,11 +433,11 @@ func TestWrapErrorIfBadRequest(t *testing.T) {
 func TestNewEmfExporterWithoutConfig(t *testing.T) {
 	factory := NewFactory()
 	expCfg := factory.CreateDefaultConfig().(*Config)
-	settings := exportertest.NewNopCreateSettings()
-	t.Setenv("AWS_STS_REGIONAL_ENDPOINTS", "fake")
+	settings := exportertest.NewNopSettings(metadata.Type)
 
-	exp, err := newEmfExporter(expCfg, settings)
-	assert.NotNil(t, err)
+	ctx := context.Background()
+	exp, err := newEmfExporter(ctx, expCfg, settings)
+	assert.Error(t, err)
 	assert.Nil(t, exp)
-	assert.Equal(t, settings.Logger, expCfg.logger)
+	assert.Equal(t, expCfg.logger, settings.Logger)
 }

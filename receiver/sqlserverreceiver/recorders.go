@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //go:build windows
-// +build windows
 
 package sqlserverreceiver // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/sqlserverreceiver"
 
@@ -74,7 +73,7 @@ var perfCounterRecorders = []perfCounterRecorderConf{
 				mb.RecordSqlserverPageLazyWriteRateDataPoint(ts, val)
 			},
 			"Page life expectancy": func(mb *metadata.MetricsBuilder, ts pcommon.Timestamp, val float64) {
-				mb.RecordSqlserverPageLifeExpectancyDataPoint(ts, int64(val))
+				mb.RecordSqlserverPageLifeExpectancyDataPoint(ts, int64(val), "Buffer Manager")
 			},
 			"Page reads/sec": func(mb *metadata.MetricsBuilder, ts pcommon.Timestamp, val float64) {
 				mb.RecordSqlserverPageOperationRateDataPoint(ts, val, metadata.AttributePageOperationsRead)

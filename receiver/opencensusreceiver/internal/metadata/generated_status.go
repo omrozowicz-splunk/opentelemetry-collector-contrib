@@ -4,20 +4,14 @@ package metadata
 
 import (
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
+)
+
+var (
+	Type      = component.MustNewType("opencensus")
+	ScopeName = "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/opencensusreceiver"
 )
 
 const (
-	Type             = "opencensus"
-	MetricsStability = component.StabilityLevelBeta
-	TracesStability  = component.StabilityLevelBeta
+	MetricsStability = component.StabilityLevelDeprecated
+	TracesStability  = component.StabilityLevelDeprecated
 )
-
-func Meter(settings component.TelemetrySettings) metric.Meter {
-	return settings.MeterProvider.Meter("otelcol/opencensusreceiver")
-}
-
-func Tracer(settings component.TelemetrySettings) trace.Tracer {
-	return settings.TracerProvider.Tracer("otelcol/opencensusreceiver")
-}

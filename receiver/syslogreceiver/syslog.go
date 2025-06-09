@@ -51,6 +51,9 @@ func (f ReceiverType) BaseConfig(cfg component.Config) adapter.BaseConfig {
 type SysLogConfig struct {
 	InputConfig        syslog.Config `mapstructure:",squash"`
 	adapter.BaseConfig `mapstructure:",squash"`
+
+	// prevent unkeyed literal initialization
+	_ struct{}
 }
 
 // InputConfig unmarshals the input operator
@@ -70,5 +73,5 @@ func (cfg *SysLogConfig) Unmarshal(componentParser *confmap.Conf) error {
 		cfg.InputConfig.UDP = &udp.NewConfig().BaseConfig
 	}
 
-	return componentParser.Unmarshal(cfg, confmap.WithErrorUnused())
+	return componentParser.Unmarshal(cfg)
 }

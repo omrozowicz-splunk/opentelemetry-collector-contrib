@@ -24,7 +24,7 @@ func NewFactory() receiver.Factory {
 
 func createLogsReceiver(
 	_ context.Context,
-	params receiver.CreateSettings,
+	params receiver.Settings,
 	rConf component.Config,
 	consumer consumer.Logs,
 ) (receiver.Logs, error) {
@@ -36,6 +36,7 @@ func createDefaultConfig() component.Config {
 	return &Config{
 		Logs: LogsConfig{
 			TimestampField: defaultTimestampField,
+			Separator:      defaultSeparator,
 		},
 	}
 }

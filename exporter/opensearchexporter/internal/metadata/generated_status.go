@@ -4,20 +4,14 @@ package metadata
 
 import (
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
+)
+
+var (
+	Type      = component.MustNewType("opensearch")
+	ScopeName = "github.com/open-telemetry/opentelemetry-collector-contrib/exporter/opensearchexporter"
 )
 
 const (
-	Type            = "opensearch"
-	TracesStability = component.StabilityLevelAlpha
-	LogsStability   = component.StabilityLevelDevelopment
+	TracesStability = component.StabilityLevelUnmaintained
+	LogsStability   = component.StabilityLevelUnmaintained
 )
-
-func Meter(settings component.TelemetrySettings) metric.Meter {
-	return settings.MeterProvider.Meter("otelcol/opensearch")
-}
-
-func Tracer(settings component.TelemetrySettings) trace.Tracer {
-	return settings.TracerProvider.Tracer("otelcol/opensearch")
-}

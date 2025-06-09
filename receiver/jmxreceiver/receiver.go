@@ -15,6 +15,8 @@ import (
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confignet"
+	"go.opentelemetry.io/collector/config/configoptional"
+	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/receiver/otlpreceiver"
@@ -32,14 +34,15 @@ type jmxMetricReceiver struct {
 	logger       *zap.Logger
 	config       *Config
 	subprocess   *subprocess.Subprocess
-	params       receiver.CreateSettings
+	params       receiver.Settings
 	otlpReceiver receiver.Metrics
 	nextConsumer consumer.Metrics
 	configFile   string
+	cancel       context.CancelFunc
 }
 
 func newJMXMetricReceiver(
-	params receiver.CreateSettings,
+	params receiver.Settings,
 	config *Config,
 	nextConsumer consumer.Metrics,
 ) *jmxMetricReceiver {
@@ -53,6 +56,8 @@ func newJMXMetricReceiver(
 
 func (jmx *jmxMetricReceiver) Start(ctx context.Context, host component.Host) error {
 	jmx.logger.Debug("starting JMX Receiver")
+
+	ctx, jmx.cancel = context.WithCancel(ctx)
 
 	var err error
 	jmx.otlpReceiver, err = jmx.buildOTLPReceiver()
@@ -98,13 +103,19 @@ func (jmx *jmxMetricReceiver) Start(ctx context.Context, host component.Host) er
 		return err
 	}
 	go func() {
-		for range jmx.subprocess.Stdout { // nolint
-			// ensure stdout/stderr buffer is read from.
-			// these messages are already debug logged when captured.
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-jmx.subprocess.Stdout:
+				// ensure stdout/stderr buffer is read from.
+				// these messages are already debug logged when captured.
+				continue
+			}
 		}
 	}()
 
-	return jmx.subprocess.Start(context.Background())
+	return jmx.subprocess.Start(ctx)
 }
 
 func (jmx *jmxMetricReceiver) Shutdown(ctx context.Context) error {
@@ -114,6 +125,11 @@ func (jmx *jmxMetricReceiver) Shutdown(ctx context.Context) error {
 	jmx.logger.Debug("Shutting down JMX Receiver")
 	subprocessErr := jmx.subprocess.Shutdown(ctx)
 	otlpErr := jmx.otlpReceiver.Shutdown(ctx)
+
+	if jmx.cancel != nil {
+		jmx.cancel()
+	}
+
 	removeErr := os.Remove(jmx.configFile)
 	if subprocessErr != nil {
 		return subprocessErr
@@ -122,6 +138,16 @@ func (jmx *jmxMetricReceiver) Shutdown(ctx context.Context) error {
 		return otlpErr
 	}
 	return removeErr
+}
+
+// InsertDefault is a helper function to insert a default value for a configoptional.Optional type.
+func InsertDefault[T any](opt *configoptional.Optional[T]) error {
+	if opt.HasValue() {
+		return nil
+	}
+
+	empty := confmap.NewFromStringMap(map[string]any{})
+	return empty.Unmarshal(opt)
 }
 
 func (jmx *jmxMetricReceiver) buildOTLPReceiver() (receiver.Metrics, error) {
@@ -141,17 +167,24 @@ func (jmx *jmxMetricReceiver) buildOTLPReceiver() (receiver.Metrics, error) {
 		}
 		defer listener.Close()
 		addr := listener.Addr().(*net.TCPAddr)
-		port = fmt.Sprintf("%d", addr.Port)
+		port = strconv.Itoa(addr.Port)
 		endpoint = fmt.Sprintf("%s:%s", host, port)
 		jmx.config.OTLPExporterConfig.Endpoint = endpoint
 	}
 
 	factory := otlpreceiver.NewFactory()
 	config := factory.CreateDefaultConfig().(*otlpreceiver.Config)
-	config.GRPC.NetAddr = confignet.NetAddr{Endpoint: endpoint, Transport: "tcp"}
-	config.HTTP = nil
+	if err := InsertDefault(&config.GRPC); err != nil {
+		return nil, err
+	}
+	config.GRPC.Get().NetAddr = confignet.AddrConfig{Endpoint: endpoint, Transport: confignet.TransportTypeTCP}
 
-	return factory.CreateMetricsReceiver(context.Background(), jmx.params, config, jmx.nextConsumer)
+	params := receiver.Settings{
+		ID:                component.NewIDWithName(factory.Type(), jmx.params.ID.String()),
+		TelemetrySettings: jmx.params.TelemetrySettings,
+		BuildInfo:         jmx.params.BuildInfo,
+	}
+	return factory.CreateMetrics(context.Background(), params, config, jmx.nextConsumer)
 }
 
 func (jmx *jmxMetricReceiver) buildJMXMetricGathererConfig() (string, error) {
@@ -162,7 +195,7 @@ func (jmx *jmxMetricReceiver) buildJMXMetricGathererConfig() (string, error) {
 		return "", fmt.Errorf(failedToParse, jmx.config.Endpoint, err)
 	}
 
-	if !(parsed.Scheme == "service" && strings.HasPrefix(parsed.Opaque, "jmx:")) {
+	if parsed.Scheme != "service" || !strings.HasPrefix(parsed.Opaque, "jmx:") {
 		host, portStr, err := net.SplitHostPort(jmx.config.Endpoint)
 		if err != nil {
 			return "", fmt.Errorf(failedToParse, jmx.config.Endpoint, err)
@@ -180,12 +213,12 @@ func (jmx *jmxMetricReceiver) buildJMXMetricGathererConfig() (string, error) {
 
 	endpoint := jmx.config.OTLPExporterConfig.Endpoint
 	if !strings.HasPrefix(endpoint, "http") {
-		endpoint = fmt.Sprintf("http://%s", endpoint)
+		endpoint = "http://" + endpoint
 	}
 
 	config["otel.metrics.exporter"] = "otlp"
 	config["otel.exporter.otlp.endpoint"] = endpoint
-	config["otel.exporter.otlp.timeout"] = strconv.FormatInt(jmx.config.OTLPExporterConfig.Timeout.Milliseconds(), 10)
+	config["otel.exporter.otlp.timeout"] = strconv.FormatInt(jmx.config.OTLPExporterConfig.TimeoutSettings.Timeout.Milliseconds(), 10)
 
 	if len(jmx.config.OTLPExporterConfig.Headers) > 0 {
 		config["otel.exporter.otlp.headers"] = jmx.config.OTLPExporterConfig.headersToString()

@@ -4,9 +4,11 @@ status:
   class: receiver
   stability:
     alpha: [logs]
-  distributions: [contrib, observiq, sumo, splunk]
+  distributions: [contrib]
   codeowners:
-    active: [djaglowski]
+    active: [VihasMakwana]
+    emeritus: [djaglowski]
+    seeking_new: true
 
 tests:
   config:

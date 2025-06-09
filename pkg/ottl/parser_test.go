@@ -12,8 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/ottltest"
 )
@@ -85,6 +88,172 @@ func Test_parse(t *testing.T) {
 			},
 		},
 		{
+			name:      "editor with map",
+			statement: `fff({"stringAttr": "value", "intAttr": 3, "floatAttr": 2.5, "boolAttr": true})`,
+			expected: &parsedStatement{
+				Editor: editor{
+					Function: "fff",
+					Arguments: []argument{
+						{
+							Value: value{
+								Map: &mapValue{
+									Values: []mapItem{
+										{
+											Key:   ottltest.Strp("stringAttr"),
+											Value: &value{String: ottltest.Strp("value")},
+										},
+										{
+											Key: ottltest.Strp("intAttr"),
+											Value: &value{
+												Literal: &mathExprLiteral{
+													Int: ottltest.Intp(3),
+												},
+											},
+										},
+										{
+											Key: ottltest.Strp("floatAttr"),
+											Value: &value{
+												Literal: &mathExprLiteral{
+													Float: ottltest.Floatp(2.5),
+												},
+											},
+										},
+										{
+											Key:   ottltest.Strp("boolAttr"),
+											Value: &value{Bool: (*boolean)(ottltest.Boolp(true))},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				WhereClause: nil,
+			},
+		},
+		{
+			name:      "editor with empty map",
+			statement: `fff({})`,
+			expected: &parsedStatement{
+				Editor: editor{
+					Function: "fff",
+					Arguments: []argument{
+						{
+							Value: value{
+								Map: &mapValue{
+									Values: nil,
+								},
+							},
+						},
+					},
+				},
+				WhereClause: nil,
+			},
+		},
+		{
+			name:      "editor with converter with a map",
+			statement: `fff(GetSomething({"foo":"bar"}))`,
+			expected: &parsedStatement{
+				Editor: editor{
+					Function: "fff",
+					Arguments: []argument{
+						{
+							Value: value{
+								Literal: &mathExprLiteral{
+									Converter: &converter{
+										Function: "GetSomething",
+										Arguments: []argument{
+											{
+												Value: value{
+													Map: &mapValue{
+														Values: []mapItem{
+															{
+																Key:   ottltest.Strp("foo"),
+																Value: &value{String: ottltest.Strp("bar")},
+															},
+														},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				WhereClause: nil,
+			},
+		},
+		{
+			name:      "editor with nested map",
+			statement: `fff({"mapAttr": {"foo": "bar", "get": bear.honey, "arrayAttr":["foo", "bar"]}})`,
+			expected: &parsedStatement{
+				Editor: editor{
+					Function: "fff",
+					Arguments: []argument{
+						{
+							Value: value{
+								Map: &mapValue{
+									Values: []mapItem{
+										{
+											Key: ottltest.Strp("mapAttr"),
+											Value: &value{
+												Map: &mapValue{
+													Values: []mapItem{
+														{
+															Key:   ottltest.Strp("foo"),
+															Value: &value{String: ottltest.Strp("bar")},
+														},
+														{
+															Key: ottltest.Strp("get"),
+															Value: &value{
+																Literal: &mathExprLiteral{
+																	Path: &path{
+																		Pos: lexer.Position{
+																			Offset: 38,
+																			Line:   1,
+																			Column: 39,
+																		},
+																		Context: "bear",
+																		Fields: []field{
+																			{
+																				Name: "honey",
+																			},
+																		},
+																	},
+																},
+															},
+														},
+														{
+															Key: ottltest.Strp("arrayAttr"),
+															Value: &value{
+																List: &list{
+																	Values: []value{
+																		{
+																			String: ottltest.Strp("foo"),
+																		},
+																		{
+																			String: ottltest.Strp("bar"),
+																		},
+																	},
+																},
+															},
+														},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				WhereClause: nil,
+			},
+		},
+		{
 			name:      "complex editor",
 			statement: `set("foo", GetSomething(bear.honey))`,
 			expected: &parsedStatement{
@@ -106,10 +275,13 @@ func Test_parse(t *testing.T) {
 												Value: value{
 													Literal: &mathExprLiteral{
 														Path: &path{
+															Pos: lexer.Position{
+																Offset: 24,
+																Line:   1,
+																Column: 25,
+															},
+															Context: "bear",
 															Fields: []field{
-																{
-																	Name: "bear",
-																},
 																{
 																	Name: "honey",
 																},
@@ -139,10 +311,13 @@ func Test_parse(t *testing.T) {
 							Value: value{
 								Literal: &mathExprLiteral{
 									Path: &path{
+										Pos: lexer.Position{
+											Offset: 4,
+											Line:   1,
+											Column: 5,
+										},
+										Context: "foo",
 										Fields: []field{
-											{
-												Name: "foo",
-											},
 											{
 												Name: "attributes",
 												Keys: []key{
@@ -170,6 +345,47 @@ func Test_parse(t *testing.T) {
 			},
 		},
 		{
+			name:      "single field segment",
+			statement: `set(attributes["bar"], "dog")`,
+			expected: &parsedStatement{
+				Editor: editor{
+					Function: "set",
+					Arguments: []argument{
+						{
+							Value: value{
+								Literal: &mathExprLiteral{
+									Path: &path{
+										Pos: lexer.Position{
+											Offset: 4,
+											Line:   1,
+											Column: 5,
+										},
+										Context: "",
+										Fields: []field{
+											{
+												Name: "attributes",
+												Keys: []key{
+													{
+														String: ottltest.Strp("bar"),
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+						{
+							Value: value{
+								String: ottltest.Strp("dog"),
+							},
+						},
+					},
+				},
+				WhereClause: nil,
+			},
+		},
+		{
 			name:      "Converter parameters (All Uppercase)",
 			statement: `replace_pattern(attributes["message"], "device=*", attributes["device_name"], SHA256)`,
 			expected: &parsedStatement{
@@ -180,6 +396,11 @@ func Test_parse(t *testing.T) {
 							Value: value{
 								Literal: &mathExprLiteral{
 									Path: &path{
+										Pos: lexer.Position{
+											Offset: 16,
+											Line:   1,
+											Column: 17,
+										},
 										Fields: []field{
 											{
 												Name: "attributes",
@@ -203,6 +424,11 @@ func Test_parse(t *testing.T) {
 							Value: value{
 								Literal: &mathExprLiteral{
 									Path: &path{
+										Pos: lexer.Position{
+											Offset: 51,
+											Line:   1,
+											Column: 52,
+										},
 										Fields: []field{
 											{
 												Name: "attributes",
@@ -238,6 +464,11 @@ func Test_parse(t *testing.T) {
 							Value: value{
 								Literal: &mathExprLiteral{
 									Path: &path{
+										Pos: lexer.Position{
+											Offset: 16,
+											Line:   1,
+											Column: 17,
+										},
 										Fields: []field{
 											{
 												Name: "attributes",
@@ -253,9 +484,7 @@ func Test_parse(t *testing.T) {
 							},
 						},
 						{
-							Value: value{
-								FunctionName: (ottltest.Strp("Sha256")),
-							},
+							FunctionName: ottltest.Strp("Sha256"),
 						},
 					},
 				},
@@ -273,6 +502,11 @@ func Test_parse(t *testing.T) {
 							Value: value{
 								Literal: &mathExprLiteral{
 									Path: &path{
+										Pos: lexer.Position{
+											Offset: 16,
+											Line:   1,
+											Column: 17,
+										},
 										Fields: []field{
 											{
 												Name: "attributes",
@@ -308,10 +542,13 @@ func Test_parse(t *testing.T) {
 							Value: value{
 								Literal: &mathExprLiteral{
 									Path: &path{
+										Pos: lexer.Position{
+											Offset: 4,
+											Line:   1,
+											Column: 5,
+										},
+										Context: "foo",
 										Fields: []field{
-											{
-												Name: "foo",
-											},
 											{
 												Name: "bar",
 												Keys: []key{
@@ -364,10 +601,13 @@ func Test_parse(t *testing.T) {
 							Value: value{
 								Literal: &mathExprLiteral{
 									Path: &path{
+										Pos: lexer.Position{
+											Offset: 4,
+											Line:   1,
+											Column: 5,
+										},
+										Context: "foo",
 										Fields: []field{
-											{
-												Name: "foo",
-											},
 											{
 												Name: "attributes",
 												Keys: []key{
@@ -398,6 +638,11 @@ func Test_parse(t *testing.T) {
 								Left: value{
 									Literal: &mathExprLiteral{
 										Path: &path{
+											Pos: lexer.Position{
+												Offset: 44,
+												Line:   1,
+												Column: 45,
+											},
 											Fields: []field{
 												{
 													Name: "name",
@@ -427,10 +672,13 @@ func Test_parse(t *testing.T) {
 							Value: value{
 								Literal: &mathExprLiteral{
 									Path: &path{
+										Pos: lexer.Position{
+											Offset: 4,
+											Line:   1,
+											Column: 5,
+										},
+										Context: "foo",
 										Fields: []field{
-											{
-												Name: "foo",
-											},
 											{
 												Name: "attributes",
 												Keys: []key{
@@ -461,6 +709,11 @@ func Test_parse(t *testing.T) {
 								Left: value{
 									Literal: &mathExprLiteral{
 										Path: &path{
+											Pos: lexer.Position{
+												Offset: 44,
+												Line:   1,
+												Column: 45,
+											},
 											Fields: []field{
 												{
 													Name: "name",
@@ -490,10 +743,13 @@ func Test_parse(t *testing.T) {
 							Value: value{
 								Literal: &mathExprLiteral{
 									Path: &path{
+										Pos: lexer.Position{
+											Offset: 7,
+											Line:   1,
+											Column: 8,
+										},
+										Context: "foo",
 										Fields: []field{
-											{
-												Name: "foo",
-											},
 											{
 												Name: "attributes",
 												Keys: []key{
@@ -524,6 +780,11 @@ func Test_parse(t *testing.T) {
 								Left: value{
 									Literal: &mathExprLiteral{
 										Path: &path{
+											Pos: lexer.Position{
+												Offset: 52,
+												Line:   1,
+												Column: 53,
+											},
 											Fields: []field{
 												{
 													Name: "name",
@@ -614,6 +875,11 @@ func Test_parse(t *testing.T) {
 							Value: value{
 								Literal: &mathExprLiteral{
 									Path: &path{
+										Pos: lexer.Position{
+											Offset: 4,
+											Line:   1,
+											Column: 5,
+										},
 										Fields: []field{
 											{
 												Name: "attributes",
@@ -649,6 +915,11 @@ func Test_parse(t *testing.T) {
 							Value: value{
 								Literal: &mathExprLiteral{
 									Path: &path{
+										Pos: lexer.Position{
+											Offset: 4,
+											Line:   1,
+											Column: 5,
+										},
 										Fields: []field{
 											{
 												Name: "attributes",
@@ -684,6 +955,11 @@ func Test_parse(t *testing.T) {
 							Value: value{
 								Literal: &mathExprLiteral{
 									Path: &path{
+										Pos: lexer.Position{
+											Offset: 4,
+											Line:   1,
+											Column: 5,
+										},
 										Fields: []field{
 											{
 												Name: "attributes",
@@ -719,6 +995,11 @@ func Test_parse(t *testing.T) {
 							Value: value{
 								Literal: &mathExprLiteral{
 									Path: &path{
+										Pos: lexer.Position{
+											Offset: 4,
+											Line:   1,
+											Column: 5,
+										},
 										Fields: []field{
 											{
 												Name: "attributes",
@@ -756,6 +1037,11 @@ func Test_parse(t *testing.T) {
 							Value: value{
 								Literal: &mathExprLiteral{
 									Path: &path{
+										Pos: lexer.Position{
+											Offset: 4,
+											Line:   1,
+											Column: 5,
+										},
 										Fields: []field{
 											{
 												Name: "attributes",
@@ -797,6 +1083,11 @@ func Test_parse(t *testing.T) {
 							Value: value{
 								Literal: &mathExprLiteral{
 									Path: &path{
+										Pos: lexer.Position{
+											Offset: 4,
+											Line:   1,
+											Column: 5,
+										},
 										Fields: []field{
 											{
 												Name: "attributes",
@@ -841,6 +1132,11 @@ func Test_parse(t *testing.T) {
 							Value: value{
 								Literal: &mathExprLiteral{
 									Path: &path{
+										Pos: lexer.Position{
+											Offset: 4,
+											Line:   1,
+											Column: 5,
+										},
 										Fields: []field{
 											{
 												Name: "attributes",
@@ -912,6 +1208,11 @@ func Test_parse(t *testing.T) {
 										{
 											Literal: &mathExprLiteral{
 												Path: &path{
+													Pos: lexer.Position{
+														Offset: 70,
+														Line:   1,
+														Column: 71,
+													},
 													Fields: []field{
 														{
 															Name: "attributes",
@@ -945,6 +1246,11 @@ func Test_parse(t *testing.T) {
 							Value: value{
 								Literal: &mathExprLiteral{
 									Path: &path{
+										Pos: lexer.Position{
+											Offset: 4,
+											Line:   1,
+											Column: 5,
+										},
 										Fields: []field{
 											{
 												Name: "attributes",
@@ -1030,6 +1336,11 @@ func Test_parse(t *testing.T) {
 											Left: &mathValue{
 												Literal: &mathExprLiteral{
 													Path: &path{
+														Pos: lexer.Position{
+															Offset: 55,
+															Line:   1,
+															Column: 56,
+														},
 														Fields: []field{
 															{
 																Name: "three",
@@ -1083,7 +1394,7 @@ func Test_parse(t *testing.T) {
 		t.Run(tt.statement, func(t *testing.T) {
 			parsed, err := parseStatement(tt.statement)
 			assert.NoError(t, err)
-			assert.EqualValues(t, tt.expected, parsed)
+			assert.Equal(t, tt.expected, parsed)
 		})
 	}
 }
@@ -1104,6 +1415,11 @@ func Test_parseCondition_full(t *testing.T) {
 							Left: value{
 								Literal: &mathExprLiteral{
 									Path: &path{
+										Pos: lexer.Position{
+											Offset: 0,
+											Line:   1,
+											Column: 1,
+										},
 										Fields: []field{
 											{
 												Name: "name",
@@ -1131,6 +1447,11 @@ func Test_parseCondition_full(t *testing.T) {
 							Left: value{
 								Literal: &mathExprLiteral{
 									Path: &path{
+										Pos: lexer.Position{
+											Offset: 0,
+											Line:   1,
+											Column: 1,
+										},
 										Fields: []field{
 											{
 												Name: "name",
@@ -1195,6 +1516,11 @@ func Test_parseCondition_full(t *testing.T) {
 										Left: &mathValue{
 											Literal: &mathExprLiteral{
 												Path: &path{
+													Pos: lexer.Position{
+														Offset: 13,
+														Line:   1,
+														Column: 14,
+													},
 													Fields: []field{
 														{
 															Name: "three",
@@ -1229,18 +1555,22 @@ func Test_parseCondition_full(t *testing.T) {
 		t.Run(tt.condition, func(t *testing.T) {
 			parsed, err := parseCondition(tt.condition)
 			assert.NoError(t, err)
-			assert.EqualValues(t, tt.expected, parsed)
+			assert.Equal(t, tt.expected, parsed)
 		})
 	}
 }
 
 func testParsePath[K any](p Path[K]) (GetSetter[any], error) {
 	if p != nil && (p.Name() == "name" || p.Name() == "attributes") {
+		if p.Name() == "attributes" {
+			p.Keys()
+		}
+
 		return &StandardGetSetter[any]{
-			Getter: func(ctx context.Context, tCtx any) (any, error) {
+			Getter: func(_ context.Context, tCtx any) (any, error) {
 				return tCtx, nil
 			},
-			Setter: func(ctx context.Context, tCtx any, val any) error {
+			Setter: func(_ context.Context, tCtx any, val any) error {
 				reflect.DeepEqual(tCtx, val)
 				return nil
 			},
@@ -1248,14 +1578,14 @@ func testParsePath[K any](p Path[K]) (GetSetter[any], error) {
 	}
 	if p != nil && (p.Name() == "dur1" || p.Name() == "dur2") {
 		return &StandardGetSetter[any]{
-			Getter: func(ctx context.Context, tCtx any) (any, error) {
+			Getter: func(_ context.Context, tCtx any) (any, error) {
 				m, ok := tCtx.(map[string]time.Duration)
 				if !ok {
-					return nil, fmt.Errorf("unable to convert transform context to map of strings to times")
+					return nil, errors.New("unable to convert transform context to map of strings to times")
 				}
 				return m[p.Name()], nil
 			},
-			Setter: func(ctx context.Context, tCtx any, val any) error {
+			Setter: func(_ context.Context, tCtx any, val any) error {
 				reflect.DeepEqual(tCtx, val)
 				return nil
 			},
@@ -1263,14 +1593,14 @@ func testParsePath[K any](p Path[K]) (GetSetter[any], error) {
 	}
 	if p != nil && (p.Name() == "time1" || p.Name() == "time2") {
 		return &StandardGetSetter[any]{
-			Getter: func(ctx context.Context, tCtx any) (any, error) {
+			Getter: func(_ context.Context, tCtx any) (any, error) {
 				m, ok := tCtx.(map[string]time.Time)
 				if !ok {
-					return nil, fmt.Errorf("unable to convert transform context to map of strings to times")
+					return nil, errors.New("unable to convert transform context to map of strings to times")
 				}
 				return m[p.Name()], nil
 			},
-			Setter: func(ctx context.Context, tCtx any, val any) error {
+			Setter: func(_ context.Context, tCtx any, val any) error {
 				reflect.DeepEqual(tCtx, val)
 				return nil
 			},
@@ -1290,6 +1620,11 @@ func setNameTest(b *booleanExpression) *parsedStatement {
 					Value: value{
 						Literal: &mathExprLiteral{
 							Path: &path{
+								Pos: lexer.Position{
+									Offset: 4,
+									Line:   1,
+									Column: 5,
+								},
 								Fields: []field{
 									{
 										Name: "name",
@@ -1526,6 +1861,11 @@ func Test_parseWhere(t *testing.T) {
 							Left: value{
 								Literal: &mathExprLiteral{
 									Path: &path{
+										Pos: lexer.Position{
+											Offset: 24,
+											Line:   1,
+											Column: 25,
+										},
 										Fields: []field{
 											{
 												Name: "name",
@@ -1548,6 +1888,11 @@ func Test_parseWhere(t *testing.T) {
 									Left: value{
 										Literal: &mathExprLiteral{
 											Path: &path{
+												Pos: lexer.Position{
+													Offset: 42,
+													Line:   1,
+													Column: 43,
+												},
 												Fields: []field{
 													{
 														Name: "name",
@@ -1576,6 +1921,11 @@ func Test_parseWhere(t *testing.T) {
 							Left: value{
 								Literal: &mathExprLiteral{
 									Path: &path{
+										Pos: lexer.Position{
+											Offset: 24,
+											Line:   1,
+											Column: 25,
+										},
 										Fields: []field{
 											{
 												Name: "name",
@@ -1600,6 +1950,11 @@ func Test_parseWhere(t *testing.T) {
 									Left: value{
 										Literal: &mathExprLiteral{
 											Path: &path{
+												Pos: lexer.Position{
+													Offset: 41,
+													Line:   1,
+													Column: 42,
+												},
 												Fields: []field{
 													{
 														Name: "name",
@@ -1652,6 +2007,11 @@ func Test_parseWhere(t *testing.T) {
 							Left: value{
 								Literal: &mathExprLiteral{
 									Path: &path{
+										Pos: lexer.Position{
+											Offset: 28,
+											Line:   1,
+											Column: 29,
+										},
 										Fields: []field{
 											{
 												Name: "name",
@@ -1766,9 +2126,134 @@ func testParseEnum(val *EnumSymbol) (*Enum, error) {
 		if enum, ok := testSymbolTable[*val]; ok {
 			return &enum, nil
 		}
-		return nil, fmt.Errorf("enum symbol not found")
+		return nil, errors.New("enum symbol not found")
 	}
-	return nil, fmt.Errorf("enum symbol not provided")
+	return nil, errors.New("enum symbol not provided")
+}
+
+func Test_parseValueExpression_full(t *testing.T) {
+	time1 := time.Now()
+	time2 := time1.Add(5 * time.Second)
+	tests := []struct {
+		name            string
+		valueExpression string
+		tCtx            any
+		expected        func() any
+	}{
+		{
+			name:            "string value",
+			valueExpression: `"fido"`,
+			expected: func() any {
+				return "fido"
+			},
+		},
+		{
+			name:            "resolve context value",
+			valueExpression: `attributes`,
+			expected: func() any {
+				m := pcommon.NewMap()
+				m.PutEmptyMap("attributes").PutStr("foo", "bar")
+				return m
+			},
+			tCtx: map[string]any{
+				"attributes": map[string]any{
+					"foo": "bar",
+				},
+			},
+		},
+		{
+			name:            "resolve math expression",
+			valueExpression: `time2 - time1`,
+			expected: func() any {
+				return 5 * time.Second
+			},
+			tCtx: map[string]time.Time{
+				"time1": time1,
+				"time2": time2,
+			},
+		},
+		{
+			name:            "nil",
+			valueExpression: `nil`,
+			expected: func() any {
+				return nil
+			},
+		},
+		{
+			name:            "string",
+			valueExpression: `"string"`,
+			expected: func() any {
+				return "string"
+			},
+		},
+		{
+			name:            "hex values",
+			valueExpression: `[0x0000000000000000, 0x0000000000000000]`,
+			expected: func() any {
+				return []any{
+					[]uint8{0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
+					[]uint8{0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
+				}
+			},
+		},
+		{
+			name:            "boolean",
+			valueExpression: `true`,
+			expected: func() any {
+				return true
+			},
+		},
+		{
+			name:            "map",
+			valueExpression: `{"map": 1}`,
+			expected: func() any {
+				m := pcommon.NewMap()
+				_ = m.FromRaw(map[string]any{
+					"map": int64(1),
+				})
+				return m
+			},
+		},
+		{
+			name:            "string list",
+			valueExpression: `["list", "of", "strings"]`,
+			expected: func() any {
+				return []any{"list", "of", "strings"}
+			},
+		},
+		{
+			name:            "nested list",
+			valueExpression: `[{"list":[{"foo":"bar"}]}, {"bar":"baz"}]`,
+			expected: func() any {
+				m1 := pcommon.NewMap()
+				m1.PutEmptySlice("list").AppendEmpty().SetEmptyMap().PutStr("foo", "bar")
+
+				m2 := pcommon.NewMap()
+				m2.PutStr("bar", "baz")
+				return []any{
+					m1,
+					m2,
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.valueExpression, func(t *testing.T) {
+			p, _ := NewParser(
+				CreateFactoryMap[any](),
+				testParsePath[any],
+				componenttest.NewNopTelemetrySettings(),
+				WithEnumParser[any](testParseEnum),
+			)
+			parsed, err := p.ParseValueExpression(tt.valueExpression)
+			assert.NoError(t, err)
+
+			v, err := parsed.Eval(context.Background(), tt.tCtx)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected(), v)
+		})
+	}
 }
 
 func Test_ParseStatements_Error(t *testing.T) {
@@ -1835,70 +2320,80 @@ func Test_ParseConditions_Error(t *testing.T) {
 // This test doesn't validate parser results, simply checks whether the parse succeeds or not.
 // It's a fast way to check a large range of possible syntaxes.
 func Test_parseStatement(t *testing.T) {
+	converterNameErrorPrefix := "converter names must start with an uppercase letter"
+	editorWithIndexErrorPrefix := "only paths and converters may be indexed"
+
 	tests := []struct {
-		statement string
-		wantErr   bool
+		statement         string
+		wantErr           bool
+		wantErrContaining string
 	}{
-		{`set(`, true},
-		{`set("foo)`, true},
-		{`set(name.)`, true},
-		{`("foo")`, true},
-		{`set("foo") where name =||= "fido"`, true},
-		{`set(span_id, SpanIDWrapper{not a hex string})`, true},
-		{`set(span_id, SpanIDWrapper{01})`, true},
-		{`set(span_id, SpanIDWrapper{010203040506070809})`, true},
-		{`set(trace_id, TraceIDWrapper{not a hex string})`, true},
-		{`set(trace_id, TraceIDWrapper{0102030405060708090a0b0c0d0e0f})`, true},
-		{`set(trace_id, TraceIDWrapper{0102030405060708090a0b0c0d0e0f1011})`, true},
-		{`set("foo") where name = "fido"`, true},
-		{`set("foo") where name or "fido"`, true},
-		{`set("foo") where name and "fido"`, true},
-		{`set("foo") where name and`, true},
-		{`set("foo") where name or`, true},
-		{`set("foo") where (`, true},
-		{`set("foo") where )`, true},
-		{`set("foo") where (name == "fido"))`, true},
-		{`set("foo") where ((name == "fido")`, true},
-		{`Set()`, true},
-		{`set(int())`, true},
-		{`set(1 + int())`, true},
-		{`set(int() + 1)`, true},
-		{`set(1 * int())`, true},
-		{`set(1 * 1 + (2 * int()))`, true},
-		{`set() where int() == 1`, true},
-		{`set() where 1 == int()`, true},
-		{`set() where true and 1 == int() `, true},
-		{`set() where false or 1 == int() `, true},
-		{`set(foo.attributes["bar"].cat, "dog")`, false},
-		{`set(set = foo.attributes["animal"], val = "dog") where animal == "cat"`, false},
-		{`test() where service == "pinger" or foo.attributes["endpoint"] == "/x/alive"`, false},
-		{`test() where service == "pinger" or foo.attributes["verb"] == "GET" and foo.attributes["endpoint"] == "/x/alive"`, false},
-		{`test() where animal > "cat"`, false},
-		{`test() where animal >= "cat"`, false},
-		{`test() where animal <= "cat"`, false},
-		{`test() where animal < "cat"`, false},
-		{`test() where animal =< "dog"`, true},
-		{`test() where animal => "dog"`, true},
-		{`test() where animal <> "dog"`, true},
-		{`test() where animal = "dog"`, true},
-		{`test() where animal`, true},
-		{`test() where animal ==`, true},
-		{`test() where ==`, true},
-		{`test() where == animal`, true},
-		{`test() where attributes["path"] == "/healthcheck"`, false},
-		{`test() where one() == 1`, true},
-		{`test(fail())`, true},
-		{`Test()`, true},
+		{statement: `set(`, wantErr: true},
+		{statement: `set("foo)`, wantErr: true},
+		{statement: `set(name.)`, wantErr: true},
+		{statement: `("foo")`, wantErr: true},
+		{statement: `set("foo") where name =||= "fido"`, wantErr: true},
+		{statement: `set(span_id, SpanIDWrapper{not a hex string})`, wantErr: true},
+		{statement: `set(span_id, SpanIDWrapper{01})`, wantErr: true},
+		{statement: `set(span_id, SpanIDWrapper{010203040506070809})`, wantErr: true},
+		{statement: `set(trace_id, TraceIDWrapper{not a hex string})`, wantErr: true},
+		{statement: `set(trace_id, TraceIDWrapper{0102030405060708090a0b0c0d0e0f})`, wantErr: true},
+		{statement: `set(trace_id, TraceIDWrapper{0102030405060708090a0b0c0d0e0f1011})`, wantErr: true},
+		{statement: `set("foo") where name = "fido"`, wantErr: true},
+		{statement: `set("foo") where name or "fido"`, wantErr: true},
+		{statement: `set("foo") where name and "fido"`, wantErr: true},
+		{statement: `set("foo") where name and`, wantErr: true},
+		{statement: `set("foo") where name or`, wantErr: true},
+		{statement: `set("foo") where (`, wantErr: true},
+		{statement: `set("foo") where )`, wantErr: true},
+		{statement: `set("foo") where (name == "fido"))`, wantErr: true},
+		{statement: `set("foo") where ((name == "fido")`, wantErr: true},
+		{statement: `Set()`, wantErr: true},
+		{statement: `set(int())`, wantErrContaining: converterNameErrorPrefix},
+		{statement: `set(1 + int())`, wantErrContaining: converterNameErrorPrefix},
+		{statement: `set(int() + 1)`, wantErrContaining: converterNameErrorPrefix},
+		{statement: `set(1 * int())`, wantErrContaining: converterNameErrorPrefix},
+		{statement: `set(1 * 1 + (2 * int()))`, wantErrContaining: converterNameErrorPrefix},
+		{statement: `set() where int() == 1`, wantErrContaining: converterNameErrorPrefix},
+		{statement: `set() where 1 == int()`, wantErrContaining: converterNameErrorPrefix},
+		{statement: `set() where true and 1 == int() `, wantErrContaining: converterNameErrorPrefix},
+		{statement: `set() where false or 1 == int() `, wantErrContaining: converterNameErrorPrefix},
+		{statement: `set(foo.attributes["bar"].cat)["key"]`, wantErrContaining: editorWithIndexErrorPrefix},
+		{statement: `set(foo.attributes["bar"].cat, "dog")`},
+		{statement: `set(set = foo.attributes["animal"], val = "dog") where animal == "cat"`},
+		{statement: `test() where service == "pinger" or foo.attributes["endpoint"] == "/x/alive"`},
+		{statement: `test() where service == "pinger" or foo.attributes["verb"] == "GET" and foo.attributes["endpoint"] == "/x/alive"`},
+		{statement: `test() where animal > "cat"`},
+		{statement: `test() where animal >= "cat"`},
+		{statement: `test() where animal <= "cat"`},
+		{statement: `test() where animal < "cat"`},
+		{statement: `test() where animal =< "dog"`, wantErr: true},
+		{statement: `test() where animal => "dog"`, wantErr: true},
+		{statement: `test() where animal <> "dog"`, wantErr: true},
+		{statement: `test() where animal = "dog"`, wantErr: true},
+		{statement: `test() where animal`, wantErr: true},
+		{statement: `test() where animal ==`, wantErr: true},
+		{statement: `test() where ==`, wantErr: true},
+		{statement: `test() where == animal`, wantErr: true},
+		{statement: `test() where attributes["path"] == "/healthcheck"`},
+		{statement: `test() where one() == 1`, wantErr: true},
+		{statement: `test(fail())`, wantErrContaining: converterNameErrorPrefix},
+		{statement: `Test()`, wantErr: true},
+		{statement: `set() where test(foo)["key"] == "bar"`, wantErrContaining: converterNameErrorPrefix},
+		{statement: `set() where test(foo)["key"] == "bar"`, wantErrContaining: editorWithIndexErrorPrefix},
 	}
 	pat := regexp.MustCompile("[^a-zA-Z0-9]+")
 	for _, tt := range tests {
 		name := pat.ReplaceAllString(tt.statement, "_")
 		t.Run(name, func(t *testing.T) {
 			ast, err := parseStatement(tt.statement)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("parseStatement(%s) error = %v, wantErr %v", tt.statement, err, tt.wantErr)
+			if (err != nil) != (tt.wantErr || tt.wantErrContaining != "") {
+				t.Errorf("parseStatement(%s) error = %v, wantErr %v, wantErrContaining %v", tt.statement, err, tt.wantErr, tt.wantErrContaining)
 				t.Errorf("AST: %+v", ast)
 				return
+			}
+			if tt.wantErrContaining != "" {
+				require.ErrorContains(t, err, tt.wantErrContaining)
 			}
 		})
 	}
@@ -1907,57 +2402,106 @@ func Test_parseStatement(t *testing.T) {
 // This test doesn't validate parser results, simply checks whether the parse succeeds or not.
 // It's a fast way to check a large range of possible syntaxes.
 func Test_parseCondition(t *testing.T) {
+	converterNameErrorPrefix := "converter names must start with an uppercase letter"
+	editorWithIndexErrorPrefix := "only paths and converters may be indexed"
+
 	tests := []struct {
-		condition string
-		wantErr   bool
+		condition         string
+		wantErr           bool
+		wantErrContaining string
 	}{
-		{`set(`, true},
-		{`set("foo)`, true},
-		{`set(name.)`, true},
-		{`("foo")`, true},
-		{`name =||= "fido"`, true},
-		{`name = "fido"`, true},
-		{`name or "fido"`, true},
-		{`name and "fido"`, true},
-		{`name and`, true},
-		{`name or`, true},
-		{`(`, true},
-		{`)`, true},
-		{`(name == "fido"))`, true},
-		{`((name == "fido")`, true},
-		{`set()`, true},
-		{`Int() == 1`, false},
-		{`1 == Int()`, false},
-		{`true and 1 == Int() `, false},
-		{`false or 1 == Int() `, false},
-		{`service == "pinger" or foo.attributes["endpoint"] == "/x/alive"`, false},
-		{`service == "pinger" or foo.attributes["verb"] == "GET" and foo.attributes["endpoint"] == "/x/alive"`, false},
-		{`animal > "cat"`, false},
-		{`animal >= "cat"`, false},
-		{`animal <= "cat"`, false},
-		{`animal < "cat"`, false},
-		{`animal =< "dog"`, true},
-		{`animal => "dog"`, true},
-		{`animal <> "dog"`, true},
-		{`animal = "dog"`, true},
-		{`animal`, true},
-		{`animal ==`, true},
-		{`==`, true},
-		{`== animal`, true},
-		{`attributes["path"] == "/healthcheck"`, false},
-		{`One() == 1`, false},
-		{`test(fail())`, true},
-		{`Test()`, false},
+		{condition: `set(`, wantErr: true},
+		{condition: `set("foo)`, wantErr: true},
+		{condition: `set(name.)`, wantErr: true},
+		{condition: `("foo")`, wantErr: true},
+		{condition: `name =||= "fido"`, wantErr: true},
+		{condition: `name = "fido"`, wantErr: true},
+		{condition: `name or "fido"`, wantErr: true},
+		{condition: `name and "fido"`, wantErr: true},
+		{condition: `name and`, wantErr: true},
+		{condition: `name or`, wantErr: true},
+		{condition: `(`, wantErr: true},
+		{condition: `)`, wantErr: true},
+		{condition: `(name == "fido"))`, wantErr: true},
+		{condition: `((name == "fido")`, wantErr: true},
+		{condition: `set()`, wantErr: true},
+		{condition: `Int() == 1`},
+		{condition: `1 == Int()`},
+		{condition: `true and 1 == Int() `},
+		{condition: `false or 1 == Int() `},
+		{condition: `service == "pinger" or foo.attributes["endpoint"] == "/x/alive"`},
+		{condition: `service == "pinger" or foo.attributes["verb"] == "GET" and foo.attributes["endpoint"] == "/x/alive"`},
+		{condition: `animal > "cat"`},
+		{condition: `animal >= "cat"`},
+		{condition: `animal <= "cat"`},
+		{condition: `animal < "cat"`},
+		{condition: `animal =< "dog"`, wantErr: true},
+		{condition: `animal => "dog"`, wantErr: true},
+		{condition: `animal <> "dog"`, wantErr: true},
+		{condition: `animal = "dog"`, wantErr: true},
+		{condition: `animal`, wantErr: true},
+		{condition: `animal ==`, wantErr: true},
+		{condition: `==`, wantErr: true},
+		{condition: `== animal`, wantErr: true},
+		{condition: `attributes["path"] == "/healthcheck"`},
+		{condition: `One() == 1`},
+		{condition: `test(fail())`, wantErr: true},
+		{condition: `Test()`},
+		{condition: `"test" == Foo`, wantErr: true},
+		{condition: `test(animal) == "dog"`, wantErrContaining: converterNameErrorPrefix},
+		{condition: `test(animal)["kind"] == "birds"`, wantErrContaining: converterNameErrorPrefix},
+		{condition: `test(animal)["kind"] == "birds"`, wantErrContaining: editorWithIndexErrorPrefix},
 	}
 	pat := regexp.MustCompile("[^a-zA-Z0-9]+")
 	for _, tt := range tests {
 		name := pat.ReplaceAllString(tt.condition, "_")
 		t.Run(name, func(t *testing.T) {
 			ast, err := parseCondition(tt.condition)
-			if (err != nil) != tt.wantErr {
+			if (err != nil) != (tt.wantErr || tt.wantErrContaining != "") {
 				t.Errorf("parseCondition(%s) error = %v, wantErr %v", tt.condition, err, tt.wantErr)
 				t.Errorf("AST: %+v", ast)
 				return
+			}
+			if tt.wantErrContaining != "" {
+				require.ErrorContains(t, err, tt.wantErrContaining)
+			}
+		})
+	}
+}
+
+// This test doesn't validate parser results, simply checks whether the parse succeeds or not.
+// It's a fast way to check a large range of possible syntaxes.
+func Test_parseValueExpression(t *testing.T) {
+	converterNameErrorPrefix := "converter names must start with an uppercase letter"
+	editorWithIndexErrorPrefix := "only paths and converters may be indexed"
+
+	tests := []struct {
+		valueExpression   string
+		wantErr           bool
+		wantErrContaining string
+	}{
+		{valueExpression: `time_end - time_end`},
+		{valueExpression: `time_end - time_end - attributes["foo"]`},
+		{valueExpression: `Test("foo")`},
+		{valueExpression: `Test(Test("foo")) - attributes["bar"]`},
+		{valueExpression: `Test(Test("foo")) - attributes["bar"]"`, wantErr: true},
+		{valueExpression: `test("foo")`, wantErr: true, wantErrContaining: converterNameErrorPrefix},
+		{valueExpression: `test(animal)["kind"]`, wantErrContaining: editorWithIndexErrorPrefix},
+		{valueExpression: `Test("a"")foo"`, wantErr: true},
+		{valueExpression: `Test("a"") == 1"`, wantErr: true},
+	}
+	pat := regexp.MustCompile("[^a-zA-Z0-9]+")
+	for _, tt := range tests {
+		name := pat.ReplaceAllString(tt.valueExpression, "_")
+		t.Run(name, func(t *testing.T) {
+			ast, err := parseValueExpression(tt.valueExpression)
+			if (err != nil) != (tt.wantErr || tt.wantErrContaining != "") {
+				t.Errorf("parseCondition(%s) error = %v, wantErr %v", tt.valueExpression, err, tt.wantErr)
+				t.Errorf("AST: %+v", ast)
+				return
+			}
+			if tt.wantErrContaining != "" {
+				require.ErrorContains(t, err, tt.wantErrContaining)
 			}
 		})
 	}
@@ -1974,7 +2518,7 @@ func Test_Statement_Execute(t *testing.T) {
 		{
 			name:      "Condition matched",
 			condition: alwaysTrue[any],
-			function: func(ctx context.Context, tCtx any) (any, error) {
+			function: func(_ context.Context, _ any) (any, error) {
 				return 1, nil
 			},
 			expectedCondition: true,
@@ -1983,7 +2527,7 @@ func Test_Statement_Execute(t *testing.T) {
 		{
 			name:      "Condition not matched",
 			condition: alwaysFalse[any],
-			function: func(ctx context.Context, tCtx any) (any, error) {
+			function: func(_ context.Context, _ any) (any, error) {
 				return 1, nil
 			},
 			expectedCondition: false,
@@ -1992,7 +2536,7 @@ func Test_Statement_Execute(t *testing.T) {
 		{
 			name:      "No result",
 			condition: alwaysTrue[any],
-			function: func(ctx context.Context, tCtx any) (any, error) {
+			function: func(_ context.Context, _ any) (any, error) {
 				return nil, nil
 			},
 			expectedCondition: true,
@@ -2002,8 +2546,9 @@ func Test_Statement_Execute(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			statement := Statement[any]{
-				condition: BoolExpr[any]{tt.condition},
-				function:  Expr[any]{exprFunc: tt.function},
+				condition:         BoolExpr[any]{tt.condition},
+				function:          Expr[any]{exprFunc: tt.function},
+				telemetrySettings: componenttest.NewNopTelemetrySettings(),
 			}
 
 			result, condition, err := statement.Execute(context.Background(), nil)
@@ -2054,9 +2599,9 @@ func Test_Statements_Execute_Error(t *testing.T) {
 		{
 			name: "IgnoreError error from condition",
 			condition: func(context.Context, any) (bool, error) {
-				return true, fmt.Errorf("test")
+				return true, errors.New("test")
 			},
-			function: func(ctx context.Context, tCtx any) (any, error) {
+			function: func(_ context.Context, _ any) (any, error) {
 				return 1, nil
 			},
 			errorMode: IgnoreError,
@@ -2064,9 +2609,9 @@ func Test_Statements_Execute_Error(t *testing.T) {
 		{
 			name: "PropagateError error from condition",
 			condition: func(context.Context, any) (bool, error) {
-				return true, fmt.Errorf("test")
+				return true, errors.New("test")
 			},
-			function: func(ctx context.Context, tCtx any) (any, error) {
+			function: func(_ context.Context, _ any) (any, error) {
 				return 1, nil
 			},
 			errorMode: PropagateError,
@@ -2076,8 +2621,8 @@ func Test_Statements_Execute_Error(t *testing.T) {
 			condition: func(context.Context, any) (bool, error) {
 				return true, nil
 			},
-			function: func(ctx context.Context, tCtx any) (any, error) {
-				return 1, fmt.Errorf("test")
+			function: func(_ context.Context, _ any) (any, error) {
+				return 1, errors.New("test")
 			},
 			errorMode: IgnoreError,
 		},
@@ -2086,17 +2631,17 @@ func Test_Statements_Execute_Error(t *testing.T) {
 			condition: func(context.Context, any) (bool, error) {
 				return true, nil
 			},
-			function: func(ctx context.Context, tCtx any) (any, error) {
-				return 1, fmt.Errorf("test")
+			function: func(_ context.Context, _ any) (any, error) {
+				return 1, errors.New("test")
 			},
 			errorMode: PropagateError,
 		},
 		{
 			name: "SilentError error from condition",
 			condition: func(context.Context, any) (bool, error) {
-				return true, fmt.Errorf("test")
+				return true, errors.New("test")
 			},
-			function: func(ctx context.Context, tCtx any) (any, error) {
+			function: func(_ context.Context, _ any) (any, error) {
 				return 1, nil
 			},
 			errorMode: SilentError,
@@ -2106,8 +2651,8 @@ func Test_Statements_Execute_Error(t *testing.T) {
 			condition: func(context.Context, any) (bool, error) {
 				return true, nil
 			},
-			function: func(ctx context.Context, tCtx any) (any, error) {
-				return 1, fmt.Errorf("test")
+			function: func(_ context.Context, _ any) (any, error) {
+				return 1, errors.New("test")
 			},
 			errorMode: SilentError,
 		},
@@ -2117,8 +2662,9 @@ func Test_Statements_Execute_Error(t *testing.T) {
 			statements := StatementSequence[any]{
 				statements: []*Statement[any]{
 					{
-						condition: BoolExpr[any]{tt.condition},
-						function:  Expr[any]{exprFunc: tt.function},
+						condition:         BoolExpr[any]{tt.condition},
+						function:          Expr[any]{exprFunc: tt.function},
+						telemetrySettings: componenttest.NewNopTelemetrySettings(),
 					},
 				},
 				errorMode:         tt.errorMode,
@@ -2178,7 +2724,7 @@ func Test_ConditionSequence_Eval(t *testing.T) {
 			name: "Single erroring condition is treated as false when using Ignore with OR",
 			conditions: []boolExpressionEvaluator[any]{
 				func(context.Context, any) (bool, error) {
-					return true, fmt.Errorf("test")
+					return true, errors.New("test")
 				},
 			},
 			errorMode:      IgnoreError,
@@ -2189,7 +2735,7 @@ func Test_ConditionSequence_Eval(t *testing.T) {
 			name: "erroring condition is ignored when using Ignore with OR",
 			conditions: []boolExpressionEvaluator[any]{
 				func(context.Context, any) (bool, error) {
-					return true, fmt.Errorf("test")
+					return true, errors.New("test")
 				},
 				alwaysTrue[any],
 			},
@@ -2231,7 +2777,7 @@ func Test_ConditionSequence_Eval(t *testing.T) {
 			name: "Single erroring condition is treated as false when using Ignore with AND",
 			conditions: []boolExpressionEvaluator[any]{
 				func(context.Context, any) (bool, error) {
-					return true, fmt.Errorf("test")
+					return true, errors.New("test")
 				},
 			},
 			errorMode:      IgnoreError,
@@ -2242,7 +2788,7 @@ func Test_ConditionSequence_Eval(t *testing.T) {
 			name: "erroring condition is ignored when using Ignore with AND",
 			conditions: []boolExpressionEvaluator[any]{
 				func(context.Context, any) (bool, error) {
-					return true, fmt.Errorf("test")
+					return true, errors.New("test")
 				},
 				alwaysTrue[any],
 			},
@@ -2285,7 +2831,7 @@ func Test_ConditionSequence_Eval_Error(t *testing.T) {
 			name: "Propagate Error from condition",
 			conditions: []boolExpressionEvaluator[any]{
 				func(context.Context, any) (bool, error) {
-					return true, fmt.Errorf("test")
+					return true, errors.New("test")
 				},
 			},
 			errorMode: PropagateError,
@@ -2294,7 +2840,7 @@ func Test_ConditionSequence_Eval_Error(t *testing.T) {
 			name: "Ignore Error from function with IgnoreError",
 			conditions: []boolExpressionEvaluator[any]{
 				func(context.Context, any) (bool, error) {
-					return true, fmt.Errorf("test")
+					return true, errors.New("test")
 				},
 			},
 			errorMode: IgnoreError,
@@ -2303,7 +2849,7 @@ func Test_ConditionSequence_Eval_Error(t *testing.T) {
 			name: "Ignore Error from function with SilentError",
 			conditions: []boolExpressionEvaluator[any]{
 				func(context.Context, any) (bool, error) {
-					return true, fmt.Errorf("test")
+					return true, errors.New("test")
 				},
 			},
 			errorMode: SilentError,
@@ -2331,6 +2877,280 @@ func Test_ConditionSequence_Eval_Error(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
+		})
+	}
+}
+
+func Test_prependContextToStatementPaths_InvalidStatement(t *testing.T) {
+	ps, err := NewParser(
+		CreateFactoryMap[any](),
+		testParsePath[any],
+		componenttest.NewNopTelemetrySettings(),
+		WithEnumParser[any](testParseEnum),
+		WithPathContextNames[any]([]string{"foo", "bar"}),
+	)
+	require.NoError(t, err)
+	_, err = ps.prependContextToStatementPaths("foo", "this is invalid")
+	require.ErrorContains(t, err, `statement has invalid syntax`)
+}
+
+func Test_prependContextToStatementPaths_InvalidContext(t *testing.T) {
+	ps, err := NewParser(
+		CreateFactoryMap[any](),
+		testParsePath[any],
+		componenttest.NewNopTelemetrySettings(),
+		WithEnumParser[any](testParseEnum),
+		WithPathContextNames[any]([]string{"foo", "bar"}),
+	)
+	require.NoError(t, err)
+	_, err = ps.prependContextToStatementPaths("foobar", "set(foo, 1)")
+	require.ErrorContains(t, err, `unknown context "foobar" for parser`)
+}
+
+func Test_prependContextToStatementPaths_Success(t *testing.T) {
+	type mockSetArguments[K any] struct {
+		Target Setter[K]
+		Value  Getter[K]
+	}
+
+	mockSetFactory := NewFactory("set", &mockSetArguments[any]{}, func(_ FunctionContext, _ Arguments) (ExprFunc[any], error) {
+		return func(_ context.Context, _ any) (any, error) {
+			return nil, nil
+		}, nil
+	})
+
+	tests := []struct {
+		name             string
+		statement        string
+		context          string
+		pathContextNames []string
+		expected         string
+	}{
+		{
+			name:             "no paths",
+			statement:        `set("foo", 1)`,
+			context:          "bar",
+			pathContextNames: []string{"bar"},
+			expected:         `set("foo", 1)`,
+		},
+		{
+			name:             "single path with context",
+			statement:        `set(span.value, 1)`,
+			context:          "span",
+			pathContextNames: []string{"span"},
+			expected:         `set(span.value, 1)`,
+		},
+		{
+			name:             "single path without context",
+			statement:        "set(value, 1)",
+			context:          "span",
+			pathContextNames: []string{"span"},
+			expected:         "set(span.value, 1)",
+		},
+		{
+			name:             "single path with context - multiple context names",
+			statement:        "set(span.value, 1)",
+			context:          "spanevent",
+			pathContextNames: []string{"spanevent", "span"},
+			expected:         "set(span.value, 1)",
+		},
+		{
+			name:             "multiple paths with the same context",
+			statement:        `set(span.value, 1) where span.attributes["foo"] == "foo" and span.id == 1`,
+			context:          "another",
+			pathContextNames: []string{"another", "span"},
+			expected:         `set(span.value, 1) where span.attributes["foo"] == "foo" and span.id == 1`,
+		},
+		{
+			name:             "multiple paths with different contexts",
+			statement:        `set(another.value, 1) where span.attributes["foo"] == "foo" and another.id == 1`,
+			context:          "another",
+			pathContextNames: []string{"another", "span"},
+			expected:         `set(another.value, 1) where span.attributes["foo"] == "foo" and another.id == 1`,
+		},
+		{
+			name:             "multiple paths with and without contexts",
+			statement:        `set(value, 1) where span.attributes["foo"] == "foo" and id == 1`,
+			context:          "spanevent",
+			pathContextNames: []string{"spanevent", "span"},
+			expected:         `set(spanevent.value, 1) where span.attributes["foo"] == "foo" and spanevent.id == 1`,
+		},
+		{
+			name:             "multiple paths without context",
+			statement:        `set(value, 1) where name == attributes["foo.name"]`,
+			context:          "span",
+			pathContextNames: []string{"span"},
+			expected:         `set(span.value, 1) where span.name == span.attributes["foo.name"]`,
+		},
+		{
+			name:             "function path parameter without context",
+			statement:        `set(attributes["test"], "pass") where IsMatch(name, "operation[AC]")`,
+			context:          "log",
+			pathContextNames: []string{"log"},
+			expected:         `set(log.attributes["test"], "pass") where IsMatch(log.name, "operation[AC]")`,
+		},
+		{
+			name:             "function path parameter with context",
+			statement:        `set(attributes["test"], "pass") where IsMatch(resource.name, "operation[AC]")`,
+			context:          "log",
+			pathContextNames: []string{"log", "resource"},
+			expected:         `set(log.attributes["test"], "pass") where IsMatch(resource.name, "operation[AC]")`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ps, err := NewParser(
+				CreateFactoryMap[any](mockSetFactory),
+				testParsePath[any],
+				componenttest.NewNopTelemetrySettings(),
+				WithEnumParser[any](testParseEnum),
+				WithPathContextNames[any](tt.pathContextNames),
+			)
+
+			require.NoError(t, err)
+			require.NotNil(t, ps)
+
+			result, err := ps.prependContextToStatementPaths(tt.context, tt.statement)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func Test_prependContextToConditionPaths_InvalidCondition(t *testing.T) {
+	ps, err := NewParser(
+		CreateFactoryMap[any](),
+		testParsePath[any],
+		componenttest.NewNopTelemetrySettings(),
+		WithEnumParser[any](testParseEnum),
+		WithPathContextNames[any]([]string{"foo", "bar"}),
+	)
+	require.NoError(t, err)
+	_, err = ps.prependContextToConditionPaths("foo", "this is invalid")
+	require.ErrorContains(t, err, `condition has invalid syntax`)
+}
+
+func Test_prependContextToConditionPaths_InvalidContext(t *testing.T) {
+	ps, err := NewParser(
+		CreateFactoryMap[any](),
+		testParsePath[any],
+		componenttest.NewNopTelemetrySettings(),
+		WithEnumParser[any](testParseEnum),
+		WithPathContextNames[any]([]string{"foo", "bar"}),
+	)
+	require.NoError(t, err)
+	_, err = ps.prependContextToConditionPaths("foobar", "set(foo, 1)")
+	require.ErrorContains(t, err, `unknown context "foobar" for parser`)
+}
+
+func Test_prependContextToConditionPaths_Success(t *testing.T) {
+	type mockSetArguments[K any] struct {
+		Target Setter[K]
+		Value  Getter[K]
+	}
+
+	mockSetFactory := NewFactory("set", &mockSetArguments[any]{}, func(_ FunctionContext, _ Arguments) (ExprFunc[any], error) {
+		return func(_ context.Context, _ any) (any, error) {
+			return nil, nil
+		}, nil
+	})
+
+	tests := []struct {
+		name             string
+		condition        string
+		context          string
+		pathContextNames []string
+		expected         string
+	}{
+		{
+			name:             "no paths",
+			condition:        `"foo" == 1`,
+			context:          "bar",
+			pathContextNames: []string{"bar"},
+			expected:         `"foo" == 1`,
+		},
+		{
+			name:             "single path with context",
+			condition:        `span.value == 1`,
+			context:          "span",
+			pathContextNames: []string{"span"},
+			expected:         `span.value == 1`,
+		},
+		{
+			name:             "single path without context",
+			condition:        "value == 1",
+			context:          "span",
+			pathContextNames: []string{"span"},
+			expected:         "span.value == 1",
+		},
+		{
+			name:             "single path with context - multiple context names",
+			condition:        "span.value == 1",
+			context:          "spanevent",
+			pathContextNames: []string{"spanevent", "span"},
+			expected:         "span.value == 1",
+		},
+		{
+			name:             "multiple paths with the same context",
+			condition:        `span.attributes["foo"] == "foo" and span.id == 1`,
+			context:          "another",
+			pathContextNames: []string{"another", "span"},
+			expected:         `span.attributes["foo"] == "foo" and span.id == 1`,
+		},
+		{
+			name:             "multiple paths with different contexts",
+			condition:        `another.value == 1 and span.attributes["foo"] == "foo" and another.id == 1`,
+			context:          "another",
+			pathContextNames: []string{"another", "span"},
+			expected:         `another.value == 1 and span.attributes["foo"] == "foo" and another.id == 1`,
+		},
+		{
+			name:             "multiple paths with and without contexts",
+			condition:        `value == 1 and span.attributes["foo"] == "foo" and id == 1`,
+			context:          "spanevent",
+			pathContextNames: []string{"spanevent", "span"},
+			expected:         `spanevent.value == 1 and span.attributes["foo"] == "foo" and spanevent.id == 1`,
+		},
+		{
+			name:             "multiple paths without context",
+			condition:        `value == 1 or name == attributes["foo.name"]`,
+			context:          "span",
+			pathContextNames: []string{"span"},
+			expected:         `span.value == 1 or span.name == span.attributes["foo.name"]`,
+		},
+		{
+			name:             "function path parameter without context",
+			condition:        `attributes["test"] == "pass" and IsMatch(name, "operation[AC]")`,
+			context:          "log",
+			pathContextNames: []string{"log"},
+			expected:         `log.attributes["test"] == "pass" and IsMatch(log.name, "operation[AC]")`,
+		},
+		{
+			name:             "function path parameter with context",
+			condition:        `attributes["test"] == "pass" and IsMatch(resource.name, "operation[AC]")`,
+			context:          "log",
+			pathContextNames: []string{"log", "resource"},
+			expected:         `log.attributes["test"] == "pass" and IsMatch(resource.name, "operation[AC]")`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ps, err := NewParser(
+				CreateFactoryMap[any](mockSetFactory),
+				testParsePath[any],
+				componenttest.NewNopTelemetrySettings(),
+				WithEnumParser[any](testParseEnum),
+				WithPathContextNames[any](tt.pathContextNames),
+			)
+
+			require.NoError(t, err)
+			require.NotNil(t, ps)
+
+			result, err := ps.prependContextToConditionPaths(tt.context, tt.condition)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }

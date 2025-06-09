@@ -9,6 +9,8 @@ import (
 
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/config/confignet"
+	"go.opentelemetry.io/collector/config/configoptional"
+	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/receiver/otlpreceiver"
@@ -55,36 +57,48 @@ type BaseOTLPDataReceiver struct {
 	compression     string
 	retry           string
 	sendingQueue    string
+	timeout         string
+	batcher         string
+}
+
+// InsertDefault is a helper function to insert a default value for a configoptional.Optional type.
+func InsertDefault[T any](opt *configoptional.Optional[T]) error {
+	if opt.HasValue() {
+		return nil
+	}
+
+	empty := confmap.NewFromStringMap(map[string]any{})
+	return empty.Unmarshal(opt)
 }
 
 func (bor *BaseOTLPDataReceiver) Start(tc consumer.Traces, mc consumer.Metrics, lc consumer.Logs) error {
 	factory := otlpreceiver.NewFactory()
 	cfg := factory.CreateDefaultConfig().(*otlpreceiver.Config)
 	if bor.exporterType == "otlp" {
-		cfg.GRPC.NetAddr = confignet.NetAddr{Endpoint: fmt.Sprintf("127.0.0.1:%d", bor.Port), Transport: "tcp"}
-		cfg.HTTP = nil
+		if err := InsertDefault(&cfg.GRPC); err != nil {
+			return err
+		}
+		cfg.GRPC.Get().NetAddr = confignet.AddrConfig{Endpoint: fmt.Sprintf("127.0.0.1:%d", bor.Port), Transport: confignet.TransportTypeTCP}
 	} else {
-		cfg.HTTP.Endpoint = fmt.Sprintf("127.0.0.1:%d", bor.Port)
-		cfg.GRPC = nil
+		if err := InsertDefault(&cfg.HTTP); err != nil {
+			return err
+		}
+		cfg.HTTP.Get().ServerConfig.Endpoint = fmt.Sprintf("127.0.0.1:%d", bor.Port)
 	}
+
 	var err error
-	set := receivertest.NewNopCreateSettings()
-	if bor.traceReceiver, err = factory.CreateTracesReceiver(context.Background(), set, cfg, tc); err != nil {
+	set := receivertest.NewNopSettings(factory.Type())
+	if bor.traceReceiver, err = factory.CreateTraces(context.Background(), set, cfg, tc); err != nil {
 		return err
 	}
-	if bor.metricsReceiver, err = factory.CreateMetricsReceiver(context.Background(), set, cfg, mc); err != nil {
+	if bor.metricsReceiver, err = factory.CreateMetrics(context.Background(), set, cfg, mc); err != nil {
 		return err
 	}
-	if bor.logReceiver, err = factory.CreateLogsReceiver(context.Background(), set, cfg, lc); err != nil {
+	if bor.logReceiver, err = factory.CreateLogs(context.Background(), set, cfg, lc); err != nil {
 		return err
 	}
 
-	if err = bor.traceReceiver.Start(context.Background(), componenttest.NewNopHost()); err != nil {
-		return err
-	}
-	if err = bor.metricsReceiver.Start(context.Background(), componenttest.NewNopHost()); err != nil {
-		return err
-	}
+	// we reuse the receiver across signals. Starting the log receiver starts the metrics and traces receiver.
 	return bor.logReceiver.Start(context.Background(), componenttest.NewNopHost())
 }
 
@@ -103,13 +117,18 @@ func (bor *BaseOTLPDataReceiver) WithQueue(sendingQueue string) *BaseOTLPDataRec
 	return bor
 }
 
+func (bor *BaseOTLPDataReceiver) WithTimeout(timeout string) *BaseOTLPDataReceiver {
+	bor.timeout = timeout
+	return bor
+}
+
+func (bor *BaseOTLPDataReceiver) WithBatcher(batcher string) *BaseOTLPDataReceiver {
+	bor.batcher = batcher
+	return bor
+}
+
 func (bor *BaseOTLPDataReceiver) Stop() error {
-	if err := bor.traceReceiver.Shutdown(context.Background()); err != nil {
-		return err
-	}
-	if err := bor.metricsReceiver.Shutdown(context.Background()); err != nil {
-		return err
-	}
+	// we reuse the receiver across signals. Shutting down the log receiver shuts down the metrics and traces receiver.
 	return bor.logReceiver.Shutdown(context.Background())
 }
 
@@ -128,8 +147,10 @@ func (bor *BaseOTLPDataReceiver) GenConfigYAMLStr() string {
     endpoint: "%s"
     %s
     %s
+    %s
+    %s
     tls:
-      insecure: true`, bor.exporterType, addr, bor.retry, bor.sendingQueue)
+      insecure: true`, bor.exporterType, addr, bor.retry, bor.sendingQueue, bor.timeout, bor.batcher)
 	comp := "none"
 	if bor.compression != "" {
 		comp = bor.compression

@@ -12,7 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/confignet"
+	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
+	"go.opentelemetry.io/collector/confmap/xconfmap"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/carbonexporter/internal/metadata"
@@ -30,7 +32,6 @@ func TestLoadConfig(t *testing.T) {
 		expected     component.Config
 		errorMessage string
 	}{
-
 		{
 			id:       component.NewIDWithName(metadata.Type, ""),
 			expected: createDefaultConfig(),
@@ -38,14 +39,14 @@ func TestLoadConfig(t *testing.T) {
 		{
 			id: component.NewIDWithName(metadata.Type, "allsettings"),
 			expected: &Config{
-				TCPAddr: confignet.TCPAddr{
+				TCPAddrConfig: confignet.TCPAddrConfig{
 					Endpoint: "localhost:8080",
 				},
 				MaxIdleConns: 15,
-				TimeoutSettings: exporterhelper.TimeoutSettings{
+				TimeoutSettings: exporterhelper.TimeoutConfig{
 					Timeout: 10 * time.Second,
 				},
-				RetryConfig: exporterhelper.RetrySettings{
+				RetryConfig: configretry.BackOffConfig{
 					Enabled:             true,
 					InitialInterval:     10 * time.Second,
 					RandomizationFactor: 0.7,
@@ -53,10 +54,11 @@ func TestLoadConfig(t *testing.T) {
 					MaxInterval:         1 * time.Minute,
 					MaxElapsedTime:      10 * time.Minute,
 				},
-				QueueConfig: exporterhelper.QueueSettings{
+				QueueConfig: exporterhelper.QueueBatchConfig{
 					Enabled:      true,
 					NumConsumers: 2,
 					QueueSize:    10,
+					Sizer:        exporterhelper.RequestSizerTypeRequests,
 				},
 				ResourceToTelemetryConfig: resourcetotelemetry.Settings{
 					Enabled: true,
@@ -72,9 +74,9 @@ func TestLoadConfig(t *testing.T) {
 
 			sub, err := cm.Sub(tt.id.String())
 			require.NoError(t, err)
-			require.NoError(t, component.UnmarshalConfig(sub, cfg))
+			require.NoError(t, sub.Unmarshal(cfg))
 
-			assert.NoError(t, component.ValidateConfig(cfg))
+			assert.NoError(t, xconfmap.Validate(cfg))
 			assert.Equal(t, tt.expected, cfg)
 		})
 	}
@@ -93,7 +95,7 @@ func TestValidateConfig(t *testing.T) {
 		{
 			name: "invalid_tcp_addr",
 			config: &Config{
-				TCPAddr: confignet.TCPAddr{
+				TCPAddrConfig: confignet.TCPAddrConfig{
 					Endpoint: "http://localhost:2003",
 				},
 			},
@@ -102,8 +104,8 @@ func TestValidateConfig(t *testing.T) {
 		{
 			name: "invalid_timeout",
 			config: &Config{
-				TCPAddr: confignet.TCPAddr{Endpoint: defaultEndpoint},
-				TimeoutSettings: exporterhelper.TimeoutSettings{
+				TCPAddrConfig: confignet.TCPAddrConfig{Endpoint: defaultEndpoint},
+				TimeoutSettings: exporterhelper.TimeoutConfig{
 					Timeout: -5 * time.Second,
 				},
 			},
@@ -112,8 +114,8 @@ func TestValidateConfig(t *testing.T) {
 		{
 			name: "invalid_max_idle_conns",
 			config: &Config{
-				TCPAddr:      confignet.TCPAddr{Endpoint: defaultEndpoint},
-				MaxIdleConns: -1,
+				TCPAddrConfig: confignet.TCPAddrConfig{Endpoint: defaultEndpoint},
+				MaxIdleConns:  -1,
 			},
 			wantErr: true,
 		},

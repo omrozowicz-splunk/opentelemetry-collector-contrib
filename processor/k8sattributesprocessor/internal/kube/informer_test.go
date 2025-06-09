@@ -33,6 +33,13 @@ func Test_newSharedNamespaceInformer(t *testing.T) {
 	assert.NotNil(t, informer)
 }
 
+func Test_newSharedDeploymentInformer(t *testing.T) {
+	client, err := newFakeAPIClientset(k8sconfig.APIConfig{})
+	require.NoError(t, err)
+	informer := newDeploymentSharedInformer(client, "ns")
+	assert.NotNil(t, informer)
+}
+
 func Test_newKubeSystemSharedInformer(t *testing.T) {
 	client, err := newFakeAPIClientset(k8sconfig.APIConfig{})
 	require.NoError(t, err)
@@ -49,7 +56,7 @@ func Test_informerListFuncWithSelectors(t *testing.T) {
 				Op:    selection.Equals,
 			},
 		},
-		Labels: []FieldFilter{
+		Labels: []LabelFilter{
 			{
 				Key:   "lk1",
 				Value: "lv1",
@@ -86,7 +93,7 @@ func Test_informerWatchFuncWithSelectors(t *testing.T) {
 				Op:    selection.Equals,
 			},
 		},
-		Labels: []FieldFilter{
+		Labels: []LabelFilter{
 			{
 				Key:   "lk1",
 				Value: "lv1",

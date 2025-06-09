@@ -4,19 +4,13 @@ package metadata
 
 import (
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
+)
+
+var (
+	Type      = component.MustNewType("file_storage")
+	ScopeName = "github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage"
 )
 
 const (
-	Type               = "file_storage"
 	ExtensionStability = component.StabilityLevelBeta
 )
-
-func Meter(settings component.TelemetrySettings) metric.Meter {
-	return settings.MeterProvider.Meter("otelcol")
-}
-
-func Tracer(settings component.TelemetrySettings) trace.Tracer {
-	return settings.TracerProvider.Tracer("otelcol")
-}

@@ -4,19 +4,13 @@ package metadata
 
 import (
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
+)
+
+var (
+	Type      = component.MustNewType("opamp")
+	ScopeName = "github.com/open-telemetry/opentelemetry-collector-contrib/extension/opampextension"
 )
 
 const (
-	Type               = "opamp"
-	ExtensionStability = component.StabilityLevelDevelopment
+	ExtensionStability = component.StabilityLevelAlpha
 )
-
-func Meter(settings component.TelemetrySettings) metric.Meter {
-	return settings.MeterProvider.Meter("otelcol/opamp")
-}
-
-func Tracer(settings component.TelemetrySettings) trace.Tracer {
-	return settings.TracerProvider.Tracer("otelcol/opamp")
-}

@@ -40,7 +40,7 @@ func (f *FakeInformer) AddEventHandler(handler cache.ResourceEventHandler) (cach
 }
 
 func (f *FakeInformer) AddEventHandlerWithResyncPeriod(_ cache.ResourceEventHandler, _ time.Duration) (cache.ResourceEventHandlerRegistration, error) {
-	return nil, nil
+	return f, nil
 }
 
 func (f *FakeInformer) RemoveEventHandler(_ cache.ResourceEventHandlerRegistration) error {
@@ -56,7 +56,7 @@ func (f *FakeInformer) SetTransform(_ cache.TransformFunc) error {
 }
 
 func (f *FakeInformer) GetStore() cache.Store {
-	return cache.NewStore(func(obj any) (string, error) { return "", nil })
+	return cache.NewStore(func(_ any) (string, error) { return "", nil })
 }
 
 func (f *FakeInformer) GetController() cache.Controller {
@@ -81,7 +81,7 @@ func (f *FakeNamespaceInformer) AddEventHandlerWithResyncPeriod(_ cache.Resource
 }
 
 func (f *FakeNamespaceInformer) GetStore() cache.Store {
-	return cache.NewStore(func(obj any) (string, error) { return "", nil })
+	return cache.NewStore(func(_ any) (string, error) { return "", nil })
 }
 
 func (f *FakeNamespaceInformer) GetController() cache.Controller {
@@ -111,7 +111,7 @@ func (f *FakeReplicaSetInformer) SetTransform(_ cache.TransformFunc) error {
 }
 
 func (f *FakeReplicaSetInformer) GetStore() cache.Store {
-	return cache.NewStore(func(obj any) (string, error) { return "", nil })
+	return cache.NewStore(func(_ any) (string, error) { return "", nil })
 }
 
 func (f *FakeReplicaSetInformer) GetController() cache.Controller {
@@ -160,11 +160,21 @@ func NewNoOpInformer(
 	}
 }
 
+func NewNoOpWorkloadInformer(
+	_ kubernetes.Interface,
+	_ string,
+) cache.SharedInformer {
+	return &NoOpInformer{
+		NoOpController: &NoOpController{},
+	}
+}
+
 func (f *NoOpInformer) AddEventHandler(handler cache.ResourceEventHandler) (cache.ResourceEventHandlerRegistration, error) {
 	return f.AddEventHandlerWithResyncPeriod(handler, time.Second)
 }
+
 func (f *NoOpInformer) AddEventHandlerWithResyncPeriod(_ cache.ResourceEventHandler, _ time.Duration) (cache.ResourceEventHandlerRegistration, error) {
-	return nil, nil
+	return f, nil
 }
 
 func (f *NoOpInformer) RemoveEventHandler(_ cache.ResourceEventHandlerRegistration) error {
@@ -176,7 +186,7 @@ func (f *NoOpInformer) SetTransform(_ cache.TransformFunc) error {
 }
 
 func (f *NoOpInformer) GetStore() cache.Store {
-	return cache.NewStore(func(obj any) (string, error) { return "", nil })
+	return cache.NewStore(func(_ any) (string, error) { return "", nil })
 }
 
 func (f *NoOpInformer) GetController() cache.Controller {
@@ -193,9 +203,11 @@ func (c *NoOpController) Run(stopCh <-chan struct{}) {
 		c.hasStopped = true
 	}()
 }
+
 func (c *NoOpController) IsStopped() bool {
 	return c.hasStopped
 }
+
 func (c *NoOpController) HasSynced() bool {
 	return true
 }

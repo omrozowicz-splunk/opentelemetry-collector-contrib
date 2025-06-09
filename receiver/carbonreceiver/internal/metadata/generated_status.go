@@ -4,19 +4,13 @@ package metadata
 
 import (
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
+)
+
+var (
+	Type      = component.MustNewType("carbon")
+	ScopeName = "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/carbonreceiver"
 )
 
 const (
-	Type             = "carbon"
-	MetricsStability = component.StabilityLevelBeta
+	MetricsStability = component.StabilityLevelUnmaintained
 )
-
-func Meter(settings component.TelemetrySettings) metric.Meter {
-	return settings.MeterProvider.Meter("otelcol/carbonreceiver")
-}
-
-func Tracer(settings component.TelemetrySettings) trace.Tracer {
-	return settings.TracerProvider.Tracer("otelcol/carbonreceiver")
-}

@@ -4,21 +4,15 @@ package metadata
 
 import (
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
+)
+
+var (
+	Type      = component.MustNewType("alibabacloud_logservice")
+	ScopeName = "github.com/open-telemetry/opentelemetry-collector-contrib/exporter/alibabacloudlogserviceexporter"
 )
 
 const (
-	Type             = "alibabacloud_logservice"
-	TracesStability  = component.StabilityLevelUnmaintained
-	MetricsStability = component.StabilityLevelUnmaintained
-	LogsStability    = component.StabilityLevelUnmaintained
+	TracesStability  = component.StabilityLevelBeta
+	MetricsStability = component.StabilityLevelBeta
+	LogsStability    = component.StabilityLevelBeta
 )
-
-func Meter(settings component.TelemetrySettings) metric.Meter {
-	return settings.MeterProvider.Meter("otelcol/alibabacloudlogservice")
-}
-
-func Tracer(settings component.TelemetrySettings) trace.Tracer {
-	return settings.TracerProvider.Tracer("otelcol/alibabacloudlogservice")
-}

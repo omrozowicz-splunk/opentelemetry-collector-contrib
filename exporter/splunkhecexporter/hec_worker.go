@@ -62,6 +62,7 @@ func (hec *defaultHecWorker) send(ctx context.Context, buf buffer, headers map[s
 		hec.logger.Error("Splunk is unable to receive data. Please investigate the health of the cluster", zap.Int("status", resp.StatusCode), zap.String("host", hec.url.String()))
 	}
 
+	hec.logger.Debug("HTTP response", zap.Int("status", resp.StatusCode))
 	err = splunk.HandleHTTPCode(resp)
 	if err != nil {
 		return err

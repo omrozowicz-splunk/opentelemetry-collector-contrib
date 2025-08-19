@@ -121,6 +121,14 @@ func (kp *kubernetesprocessor) processMetrics(ctx context.Context, md pmetric.Me
 func (kp *kubernetesprocessor) processLogs(ctx context.Context, ld plog.Logs) (plog.Logs, error) {
 	rl := ld.ResourceLogs()
 	for i := 0; i < rl.Len(); i++ {
+		attrs := rl.At(i).Resource().Attributes()
+		kp.logger.Info("Processing log resource")
+		attrs.Range(func(k string, v pcommon.Value) bool {
+			kp.logger.Info("Log attribute",
+				zap.String("key", k),
+				zap.String("value", v.AsString()))
+			return true
+		})
 		kp.processResource(ctx, rl.At(i).Resource())
 	}
 

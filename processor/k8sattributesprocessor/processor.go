@@ -111,6 +111,14 @@ func (kp *kubernetesprocessor) processTraces(ctx context.Context, td ptrace.Trac
 func (kp *kubernetesprocessor) processMetrics(ctx context.Context, md pmetric.Metrics) (pmetric.Metrics, error) {
 	rm := md.ResourceMetrics()
 	for i := 0; i < rm.Len(); i++ {
+		attrs := rm.At(i).Resource().Attributes()
+		kp.logger.Info("Processing metric resource")
+		attrs.Range(func(k string, v pcommon.Value) bool {
+			kp.logger.Info("Metric attribute",
+				zap.String("key", k),
+				zap.String("value", v.AsString()))
+			return true
+		})
 		kp.processResource(ctx, rm.At(i).Resource())
 	}
 

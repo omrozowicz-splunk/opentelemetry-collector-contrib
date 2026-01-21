@@ -291,7 +291,7 @@ func (t *Transformer) addToBatch(ctx context.Context, e *entry.Entry, source str
 		zap.Int("max_unmatched_batch_size", t.maxUnmatchedBatchSize))
 
 	if (t.maxLogSize > 0 && int64(batch.recombined.Len()) > t.maxLogSize) ||
-		(t.maxBatchSize > 0 && batch.numEntries >= t.maxBatchSize) ||
+		batch.numEntries >= t.maxBatchSize ||
 		(!batch.matchDetected && t.maxUnmatchedBatchSize > 0 && batch.numEntries >= t.maxUnmatchedBatchSize) {
 		t.Logger().Debug("Size limit reached, triggering flush",
 			zap.String("source", source),

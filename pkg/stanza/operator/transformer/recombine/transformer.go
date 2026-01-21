@@ -60,6 +60,8 @@ func (t *Transformer) Start(_ operator.Persister) error {
 		zap.Int("max_sources", t.maxSources),
 		zap.Int64("max_log_size", t.maxLogSize),
 		zap.Duration("force_flush_timeout", t.forceFlushTimeout),
+		zap.String("force_flush_timeout_human", t.forceFlushTimeout.String()),
+		zap.Float64("force_flush_timeout_seconds", t.forceFlushTimeout.Seconds()),
 		zap.Bool("overwrite_with_newest", t.overwriteWithNewest),
 		zap.String("combine_field", t.combineField.String()),
 		zap.String("combine_with", t.combineWith),
@@ -70,8 +72,8 @@ func (t *Transformer) Start(_ operator.Persister) error {
 
 func (t *Transformer) flushLoop() {
 	t.Logger().Debug("Starting flush loop",
-		zap.Duration("force_flush_timeout", t.forceFlushTimeout),
-		zap.Duration("check_interval", t.forceFlushTimeout/5))
+		zap.String("force_flush_timeout", t.forceFlushTimeout.String()),
+		zap.String("check_interval", (t.forceFlushTimeout/5).String()))
 
 	for {
 		select {
@@ -82,7 +84,7 @@ func (t *Transformer) flushLoop() {
 			if len(t.batchMap) > 0 {
 				t.Logger().Debug("Flush loop tick - checking batches",
 					zap.Int("num_batches", len(t.batchMap)),
-					zap.Duration("force_flush_timeout", t.forceFlushTimeout))
+					zap.String("force_flush_timeout", t.forceFlushTimeout.String()))
 			}
 
 			for source, batch := range t.batchMap {
@@ -90,8 +92,10 @@ func (t *Transformer) flushLoop() {
 
 				t.Logger().Debug("Checking batch for timeout flush",
 					zap.String("source", source),
-					zap.Duration("batch_age", timeSinceFirstEntry),
-					zap.Duration("force_flush_timeout", t.forceFlushTimeout),
+					zap.String("batch_age", timeSinceFirstEntry.String()),
+					zap.Float64("batch_age_seconds", timeSinceFirstEntry.Seconds()),
+					zap.String("force_flush_timeout", t.forceFlushTimeout.String()),
+					zap.Float64("force_flush_timeout_seconds", t.forceFlushTimeout.Seconds()),
 					zap.Int("num_entries", batch.numEntries),
 					zap.Bool("will_flush", timeSinceFirstEntry >= t.forceFlushTimeout))
 
@@ -101,7 +105,14 @@ func (t *Transformer) flushLoop() {
 
 				t.Logger().Debug("Timeout reached, flushing batch",
 					zap.String("source", source),
-					zap.Duration("batch_age", timeSinceFirstEntry))
+					zap.String("batch_age", timeSinceFirstEntry.String()),
+					zap.Float64("batch_age_seconds", timeSinceFirstEntry.Seconds()),
+					zap.String("configured_timeout", t.forceFlushTimeout.String()),
+					zap.Float64("configured_timeout_seconds", t.forceFlushTimeout.Seconds()),
+					zap.Int("num_entries_in_batch", batch.numEntries),
+					zap.Int("combined_buffer_size", batch.recombined.Len()),
+					zap.Bool("match_was_detected", batch.matchDetected),
+					zap.String("partial_content", truncateString(batch.recombined.String(), 150)))
 
 				if err := t.flushSource(context.Background(), source); err != nil {
 					t.Logger().Error("there was error flushing combined logs", zap.Error(err))
@@ -324,11 +335,13 @@ func (t *Transformer) flushSource(ctx context.Context, source string) error {
 		return nil
 	}
 
+	batchAge := time.Since(batch.firstEntryObservedTime)
 	t.Logger().Debug("Flushing batch for source",
 		zap.String("source", source),
 		zap.Int("num_entries", batch.numEntries),
 		zap.Int("combined_size", batch.recombined.Len()),
-		zap.Duration("batch_age", time.Since(batch.firstEntryObservedTime)),
+		zap.String("batch_age", batchAge.String()),
+		zap.Float64("batch_age_seconds", batchAge.Seconds()),
 		zap.Bool("match_detected", batch.matchDetected))
 
 	if batch.baseEntry == nil {

@@ -94,9 +94,11 @@ func LogToSplunkEvent(res pcommon.Resource, lr plog.LogRecord, toOtelAttrs HecTo
 	}
 }
 
-// nanoTimestampToEpochMilliseconds transforms nanoseconds into <sec>.<ms>. For example, 1433188255.500 indicates 1433188255 seconds and 500 milliseconds after epoch.
+// nanoTimestampToEpochMilliseconds transforms nanoseconds into epoch seconds with sub-millisecond precision.
+// For example, 1433188255.500123 indicates 1433188255 seconds and 500123 microseconds after epoch.
+// HEC supports fractional-second precision beyond milliseconds, so no rounding is applied.
 func nanoTimestampToEpochMilliseconds(ts pcommon.Timestamp) float64 {
-	return time.Duration(ts).Round(time.Millisecond).Seconds()
+	return time.Duration(ts).Seconds()
 }
 
 func mergeValue(dst map[string]any, k string, v any) {

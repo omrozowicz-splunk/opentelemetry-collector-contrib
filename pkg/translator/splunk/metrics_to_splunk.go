@@ -262,7 +262,7 @@ func cloneMapWithSelector(fields map[string]any, selector func(string) bool) map
 }
 
 func timestampToSecondsWithMillisecondPrecision(ts pcommon.Timestamp) float64 {
-	return math.Round(float64(ts)/1e6) / 1e3
+	return float64(ts) / 1e9
 }
 
 func float64ToDimValue(f float64) string {

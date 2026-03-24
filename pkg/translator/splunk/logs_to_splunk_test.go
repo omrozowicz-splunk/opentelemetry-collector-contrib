@@ -463,8 +463,9 @@ func Test_emptyLogRecord(t *testing.T) {
 func Test_nanoTimestampToEpochMilliseconds(t *testing.T) {
 	splunkTs := nanoTimestampToEpochMilliseconds(1001000000)
 	assert.Equal(t, 1.001, splunkTs)
+	// No rounding: sub-millisecond precision is preserved
 	splunkTs = nanoTimestampToEpochMilliseconds(1001990000)
-	assert.Equal(t, 1.002, splunkTs)
+	assert.Equal(t, 1.00199, splunkTs)
 	splunkTs = nanoTimestampToEpochMilliseconds(0)
 	assert.Zero(t, splunkTs)
 }

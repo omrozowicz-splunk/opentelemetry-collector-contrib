@@ -23,7 +23,7 @@ func Test_metricDataToSplunk(t *testing.T) {
 	unixNSecs := int64(11 * time.Millisecond)
 	tsUnix := time.Unix(unixSecs, unixNSecs)
 	ts := pcommon.NewTimestampFromTime(tsUnix)
-	tsMSecs := timestampToSecondsWithMillisecondPrecision(ts)
+	tsMSecs := timestampToSecondsWithNanosecondPrecision(ts)
 
 	doubleVal := 1234.5678
 	int64Val := int64(123)
@@ -700,22 +700,24 @@ func commonSplunkMetric(
 
 func TestTimestampFormat(t *testing.T) {
 	ts := pcommon.Timestamp(32001000345)
-	assert.Equal(t, 32.001, timestampToSecondsWithMillisecondPrecision(ts))
+	assert.Equal(t, 32.001000345, timestampToSecondsWithNanosecondPrecision(ts))
 }
 
-func TestTimestampFormatRounding(t *testing.T) {
+func TestTimestampFormatNoRounding(t *testing.T) {
+	// Sub-millisecond precision is preserved; no rounding applied
 	ts := pcommon.Timestamp(32001999345)
-	assert.Equal(t, 32.002, timestampToSecondsWithMillisecondPrecision(ts))
+	assert.Equal(t, 32.001999345, timestampToSecondsWithNanosecondPrecision(ts))
 }
 
-func TestTimestampFormatRoundingWithNanos(t *testing.T) {
-	ts := pcommon.Timestamp(9999999999991500001)
-	assert.Equal(t, 9999999999.992, timestampToSecondsWithMillisecondPrecision(ts))
+func TestTimestampFormatSubMillisecondPrecision(t *testing.T) {
+	// Full nanosecond precision is preserved for large timestamps
+	ts := pcommon.Timestamp(1000000001500)
+	assert.Equal(t, 1000.0000015, timestampToSecondsWithNanosecondPrecision(ts))
 }
 
 func TestNilTimeWhenTimestampIsZero(t *testing.T) {
 	ts := pcommon.Timestamp(0)
-	assert.Zero(t, timestampToSecondsWithMillisecondPrecision(ts))
+	assert.Zero(t, timestampToSecondsWithNanosecondPrecision(ts))
 }
 
 func TestMergeEvents(t *testing.T) {

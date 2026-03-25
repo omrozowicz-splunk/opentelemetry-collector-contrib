@@ -20,10 +20,10 @@ import (
 
 func Test_metricDataToSplunk(t *testing.T) {
 	unixSecs := int64(1574092046)
-	unixNSecs := int64(11 * time.Millisecond)
+	unixNSecs := int64(11*time.Millisecond + 123456)
 	tsUnix := time.Unix(unixSecs, unixNSecs)
 	ts := pcommon.NewTimestampFromTime(tsUnix)
-	tsMSecs := timestampToSecondsWithNanosecondPrecision(ts)
+	tsNSecs := timestampToSecondsWithNanosecondPrecision(ts)
 
 	doubleVal := 1234.5678
 	int64Val := int64(123)
@@ -67,7 +67,7 @@ func Test_metricDataToSplunk(t *testing.T) {
 				return gauge
 			},
 			wantSplunkMetrics: []*Event{
-				commonSplunkMetric("gauge_with_dims", tsMSecs, []string{"k0", "k1", "metric_type"}, []any{"v0", "v1", "Gauge"}, "NaN", "", "", "", "unknown"),
+				commonSplunkMetric("gauge_with_dims", tsNSecs, []string{"k0", "k1", "metric_type"}, []any{"v0", "v1", "Gauge"}, "NaN", "", "", "", "unknown"),
 			},
 			toOtelAttrs: DefaultHecToOtelAttrs(),
 			source:      "",
@@ -86,7 +86,7 @@ func Test_metricDataToSplunk(t *testing.T) {
 				return gauge
 			},
 			wantSplunkMetrics: []*Event{
-				commonSplunkMetric("gauge_with_dims", tsMSecs, []string{"k0", "k1", "metric_type"}, []any{"v0", "v1", "Gauge"}, "+Inf", "", "", "", "unknown"),
+				commonSplunkMetric("gauge_with_dims", tsNSecs, []string{"k0", "k1", "metric_type"}, []any{"v0", "v1", "Gauge"}, "+Inf", "", "", "", "unknown"),
 			},
 			toOtelAttrs: DefaultHecToOtelAttrs(),
 			source:      "",
@@ -105,7 +105,7 @@ func Test_metricDataToSplunk(t *testing.T) {
 				return gauge
 			},
 			wantSplunkMetrics: []*Event{
-				commonSplunkMetric("gauge_with_dims", tsMSecs, []string{"k0", "k1", "metric_type"}, []any{"v0", "v1", "Gauge"}, "-Inf", "", "", "", "unknown"),
+				commonSplunkMetric("gauge_with_dims", tsNSecs, []string{"k0", "k1", "metric_type"}, []any{"v0", "v1", "Gauge"}, "-Inf", "", "", "", "unknown"),
 			},
 			toOtelAttrs: DefaultHecToOtelAttrs(),
 			source:      "",
@@ -205,7 +205,7 @@ func Test_metricDataToSplunk(t *testing.T) {
 				return intGauge
 			},
 			wantSplunkMetrics: []*Event{
-				commonSplunkMetric("gauge_int_with_dims", tsMSecs, []string{"k0", "k1", "metric_type"}, []any{"v0", "v1", "Gauge"}, int64Val, "mysource", "mysourcetype", "myindex", "myhost"),
+				commonSplunkMetric("gauge_int_with_dims", tsNSecs, []string{"k0", "k1", "metric_type"}, []any{"v0", "v1", "Gauge"}, int64Val, "mysource", "mysourcetype", "myindex", "myhost"),
 			},
 			toOtelAttrs: DefaultHecToOtelAttrs(),
 			source:      "",
@@ -235,7 +235,7 @@ func Test_metricDataToSplunk(t *testing.T) {
 				return doubleGauge
 			},
 			wantSplunkMetrics: []*Event{
-				commonSplunkMetric("gauge_double_with_dims", tsMSecs, []string{"k0", "k1", "metric_type"}, []any{"v0", "v1", "Gauge"}, doubleVal, "mysource", "mysourcetype", "myindex", "myhost"),
+				commonSplunkMetric("gauge_double_with_dims", tsNSecs, []string{"k0", "k1", "metric_type"}, []any{"v0", "v1", "Gauge"}, doubleVal, "mysource", "mysourcetype", "myindex", "myhost"),
 			},
 			toOtelAttrs: DefaultHecToOtelAttrs(),
 			source:      "",
@@ -282,7 +282,7 @@ func Test_metricDataToSplunk(t *testing.T) {
 					Source:     "",
 					SourceType: "",
 					Event:      "metric",
-					Time:       tsMSecs,
+					Time:       tsNSecs,
 					Fields: map[string]any{
 						"k0": "v0",
 						"k1": "v1",
@@ -295,7 +295,7 @@ func Test_metricDataToSplunk(t *testing.T) {
 					Source:     "",
 					SourceType: "",
 					Event:      "metric",
-					Time:       tsMSecs,
+					Time:       tsNSecs,
 					Fields: map[string]any{
 						"k0": "v0",
 						"k1": "v1",
@@ -308,7 +308,7 @@ func Test_metricDataToSplunk(t *testing.T) {
 					Source:     "",
 					SourceType: "",
 					Event:      "metric",
-					Time:       tsMSecs,
+					Time:       tsNSecs,
 					Fields: map[string]any{
 						"k0": "v0",
 						"k1": "v1",
@@ -322,7 +322,7 @@ func Test_metricDataToSplunk(t *testing.T) {
 					Source:     "",
 					SourceType: "",
 					Event:      "metric",
-					Time:       tsMSecs,
+					Time:       tsNSecs,
 					Fields: map[string]any{
 						"k0": "v0",
 						"k1": "v1",
@@ -336,7 +336,7 @@ func Test_metricDataToSplunk(t *testing.T) {
 					Source:     "",
 					SourceType: "",
 					Event:      "metric",
-					Time:       tsMSecs,
+					Time:       tsNSecs,
 					Fields: map[string]any{
 						"k0": "v0",
 						"k1": "v1",
@@ -350,7 +350,7 @@ func Test_metricDataToSplunk(t *testing.T) {
 					Source:     "",
 					SourceType: "",
 					Event:      "metric",
-					Time:       tsMSecs,
+					Time:       tsNSecs,
 					Fields: map[string]any{
 						"k0": "v0",
 						"k1": "v1",
@@ -383,7 +383,7 @@ func Test_metricDataToSplunk(t *testing.T) {
 					Source:     "",
 					SourceType: "",
 					Event:      "metric",
-					Time:       tsMSecs,
+					Time:       tsNSecs,
 					Fields: map[string]any{
 						"k0":                            "v0",
 						"k1":                            "v1",
@@ -414,7 +414,7 @@ func Test_metricDataToSplunk(t *testing.T) {
 					Source:     "",
 					SourceType: "",
 					Event:      "metric",
-					Time:       tsMSecs,
+					Time:       tsNSecs,
 					Fields: map[string]any{
 						"k0":                               "v0",
 						"k1":                               "v1",
@@ -453,7 +453,7 @@ func Test_metricDataToSplunk(t *testing.T) {
 					Source:     "",
 					SourceType: "",
 					Event:      "metric",
-					Time:       tsMSecs,
+					Time:       tsNSecs,
 					Fields: map[string]any{
 						"k0":                      "v0",
 						"k1":                      "v1",
@@ -466,7 +466,7 @@ func Test_metricDataToSplunk(t *testing.T) {
 					Source:     "",
 					SourceType: "",
 					Event:      "metric",
-					Time:       tsMSecs,
+					Time:       tsNSecs,
 					Fields: map[string]any{
 						"k0":                        "v0",
 						"k1":                        "v1",
@@ -479,7 +479,7 @@ func Test_metricDataToSplunk(t *testing.T) {
 					Source:     "",
 					SourceType: "",
 					Event:      "metric",
-					Time:       tsMSecs,
+					Time:       tsNSecs,
 					Fields: map[string]any{
 						"k0":                      "v0",
 						"k1":                      "v1",
@@ -493,7 +493,7 @@ func Test_metricDataToSplunk(t *testing.T) {
 					Source:     "",
 					SourceType: "",
 					Event:      "metric",
-					Time:       tsMSecs,
+					Time:       tsNSecs,
 					Fields: map[string]any{
 						"k0":                      "v0",
 						"k1":                      "v1",
@@ -545,7 +545,7 @@ func Test_metricDataToSplunk(t *testing.T) {
 				return doubleGauge
 			},
 			wantSplunkMetrics: []*Event{
-				commonSplunkMetric("gauge_double_with_dims", tsMSecs, []string{"k0", "k1", "metric_type"}, []any{"v0", "v1", "Gauge"}, doubleVal, "mysource2", "mysourcetype2", "myindex2", "myhost2"),
+				commonSplunkMetric("gauge_double_with_dims", tsNSecs, []string{"k0", "k1", "metric_type"}, []any{"v0", "v1", "Gauge"}, doubleVal, "mysource2", "mysourcetype2", "myindex2", "myhost2"),
 			},
 			toOtelAttrs: HecToOtelAttrs{
 				Source:     "mysource",

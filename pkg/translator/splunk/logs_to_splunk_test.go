@@ -14,7 +14,7 @@ import (
 )
 
 func Test_mapLogRecordToSplunkEvent(t *testing.T) {
-	ts := pcommon.Timestamp(123)
+	ts := pcommon.Timestamp(1574092046011123456) // has sub-millisecond precision
 
 	tests := []struct {
 		name             string
@@ -446,7 +446,7 @@ func commonLogSplunkEvent(
 	sourcetype string,
 ) *Event {
 	return &Event{
-		Time:       nanoTimestampToEpochMilliseconds(ts),
+		Time:       nanoTimestampToEpochMicroseconds(ts),
 		Host:       host,
 		Event:      event,
 		Source:     source,
@@ -460,13 +460,13 @@ func Test_emptyLogRecord(t *testing.T) {
 	assert.Nil(t, event)
 }
 
-func Test_nanoTimestampToEpochMilliseconds(t *testing.T) {
-	splunkTs := nanoTimestampToEpochMilliseconds(1001000000)
+func Test_nanoTimestampToEpochMicroseconds(t *testing.T) {
+	splunkTs := nanoTimestampToEpochMicroseconds(1001000000)
 	assert.Equal(t, 1.001, splunkTs)
 	// No rounding: sub-millisecond precision is preserved
-	splunkTs = nanoTimestampToEpochMilliseconds(1001990000)
+	splunkTs = nanoTimestampToEpochMicroseconds(1001990000)
 	assert.Equal(t, 1.00199, splunkTs)
-	splunkTs = nanoTimestampToEpochMilliseconds(0)
+	splunkTs = nanoTimestampToEpochMicroseconds(0)
 	assert.Zero(t, splunkTs)
 }
 

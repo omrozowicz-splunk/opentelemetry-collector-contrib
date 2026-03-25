@@ -11,6 +11,7 @@ import (
 	"github.com/goccy/go-json"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/splunk"
 )
@@ -23,7 +24,7 @@ const (
 	traceIDFieldKey = "trace_id"
 )
 
-func LogToSplunkEvent(res pcommon.Resource, lr plog.LogRecord, toOtelAttrs HecToOtelAttrs, toHecAttrs OtelToHecFields, source, sourceType, index string) *Event {
+func LogToSplunkEvent(res pcommon.Resource, lr plog.LogRecord, toOtelAttrs HecToOtelAttrs, toHecAttrs OtelToHecFields, source, sourceType, index string, logger *zap.Logger) *Event {
 	body := lr.Body().AsRaw()
 	if body == nil || body == "" {
 		// events with no body are rejected by
@@ -83,8 +84,14 @@ func LogToSplunkEvent(res pcommon.Resource, lr plog.LogRecord, toOtelAttrs HecTo
 		ts = lr.ObservedTimestamp()
 	}
 
+	epochSeconds := nanoTimestampToEpochMicroseconds(ts)
+	logger.Debug("log timestamp conversion",
+		zap.Uint64("timestamp_ns", uint64(ts)),
+		zap.Float64("epoch_seconds", epochSeconds),
+	)
+
 	return &Event{
-		Time:       nanoTimestampToEpochMicroseconds(ts),
+		Time:       epochSeconds,
 		Host:       host,
 		Source:     source,
 		SourceType: sourceType,

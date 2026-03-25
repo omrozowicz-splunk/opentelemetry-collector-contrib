@@ -81,6 +81,9 @@ func LogToSplunkEvent(res pcommon.Resource, lr plog.LogRecord, toOtelAttrs HecTo
 	ts := lr.Timestamp()
 	if ts == 0 {
 		ts = lr.ObservedTimestamp()
+		fmt.Printf("timestamp debug: using ObservedTimestamp input_ns=%d\n", ts)
+	} else {
+		fmt.Printf("timestamp debug: using Timestamp input_ns=%d\n", ts)
 	}
 
 	return &Event{

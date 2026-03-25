@@ -212,6 +212,7 @@ func (c *client) fillLogsBuffer(logs plog.Logs, buf buffer, is iterState) (iterS
 						// TODO record this drop as a metric
 						continue
 					}
+					fmt.Printf("HEC event time before send: %.6f\n", event.Time)
 
 					// JSON encoding event and writing to buffer.
 					var err error

@@ -6,12 +6,10 @@ package splunk
 import (
 	"testing"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/splunk"
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
-	"go.uber.org/zap"
-
-	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/splunk"
 )
 
 func Test_mapLogRecordToSplunkEvent(t *testing.T) {
@@ -431,7 +429,7 @@ func Test_mapLogRecordToSplunkEvent(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			for _, want := range tt.wantSplunkEvents {
-				got := LogToSplunkEvent(tt.logResourceFn(), tt.logRecordFn(), tt.toOtelAttrs, tt.toHecAttrs, tt.source, tt.sourceType, tt.index, zap.NewNop())
+				got := LogToSplunkEvent(tt.logResourceFn(), tt.logRecordFn(), tt.toOtelAttrs, tt.toHecAttrs, tt.source, tt.sourceType, tt.index)
 				assert.Equal(t, want, got)
 			}
 		})
@@ -457,7 +455,7 @@ func commonLogSplunkEvent(
 }
 
 func Test_emptyLogRecord(t *testing.T) {
-	event := LogToSplunkEvent(pcommon.NewResource(), plog.NewLogRecord(), DefaultHecToOtelAttrs(), DefaultOtelToHecFields(), "", "", "", zap.NewNop())
+	event := LogToSplunkEvent(pcommon.NewResource(), plog.NewLogRecord(), DefaultHecToOtelAttrs(), DefaultOtelToHecFields(), "", "", "")
 	assert.Nil(t, event)
 }
 

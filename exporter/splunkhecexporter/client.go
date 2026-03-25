@@ -207,7 +207,7 @@ func (c *client) fillLogsBuffer(logs plog.Logs, buf buffer, is iterState) (iterS
 					b = []byte(logRecord.Body().AsString() + "\n")
 				} else {
 					// Parsing log record to Splunk event.
-					event := translator.LogToSplunkEvent(rl.Resource(), logRecord, c.config.OtelAttrsToHec, c.config.HecFields, c.config.Source, c.config.SourceType, c.config.Index, c.logger)
+					event := translator.LogToSplunkEvent(rl.Resource(), logRecord, c.config.OtelAttrsToHec, c.config.HecFields, c.config.Source, c.config.SourceType, c.config.Index)
 					if event == nil {
 						// TODO record this drop as a metric
 						continue

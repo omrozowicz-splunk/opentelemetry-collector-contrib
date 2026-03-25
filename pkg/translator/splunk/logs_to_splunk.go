@@ -11,7 +11,6 @@ import (
 	"github.com/goccy/go-json"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
-	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/splunk"
 )
@@ -24,7 +23,7 @@ const (
 	traceIDFieldKey = "trace_id"
 )
 
-func LogToSplunkEvent(res pcommon.Resource, lr plog.LogRecord, toOtelAttrs HecToOtelAttrs, toHecAttrs OtelToHecFields, source, sourceType, index string, logger *zap.Logger) *Event {
+func LogToSplunkEvent(res pcommon.Resource, lr plog.LogRecord, toOtelAttrs HecToOtelAttrs, toHecAttrs OtelToHecFields, source, sourceType, index string) *Event {
 	body := lr.Body().AsRaw()
 	if body == nil || body == "" {
 		// events with no body are rejected by
@@ -84,14 +83,8 @@ func LogToSplunkEvent(res pcommon.Resource, lr plog.LogRecord, toOtelAttrs HecTo
 		ts = lr.ObservedTimestamp()
 	}
 
-	epochSeconds := nanoTimestampToEpochMicroseconds(ts)
-	logger.Debug("log timestamp conversion",
-		zap.Uint64("timestamp_ns", uint64(ts)),
-		zap.Float64("epoch_seconds", epochSeconds),
-	)
-
 	return &Event{
-		Time:       epochSeconds,
+		Time:       nanoTimestampToEpochMicroseconds(ts),
 		Host:       host,
 		Source:     source,
 		SourceType: sourceType,
@@ -105,7 +98,9 @@ func LogToSplunkEvent(res pcommon.Resource, lr plog.LogRecord, toOtelAttrs HecTo
 // For example, 1433188255.500123 indicates 1433188255 seconds and 500123 microseconds after epoch.
 // HEC supports fractional-second precision beyond milliseconds, so no rounding is applied.
 func nanoTimestampToEpochMicroseconds(ts pcommon.Timestamp) float64 {
-	return time.Duration(ts).Seconds()
+	result := time.Duration(ts).Seconds()
+	fmt.Printf("timestamp conversion: input_ns=%d epoch_seconds=%.6f\n", ts, result)
+	return result
 }
 
 func mergeValue(dst map[string]any, k string, v any) {

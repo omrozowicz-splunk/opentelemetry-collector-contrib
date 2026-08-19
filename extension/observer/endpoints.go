@@ -36,6 +36,8 @@ const (
 	HostPortType EndpointType = "hostport"
 	// ContainerType is a container endpoint.
 	ContainerType EndpointType = "container"
+	// FolderType is a filesystem directory endpoint.
+	FolderType EndpointType = "folder"
 )
 
 var (
@@ -45,6 +47,7 @@ var (
 	_ EndpointDetails = (*K8sNode)(nil)
 	_ EndpointDetails = (*HostPort)(nil)
 	_ EndpointDetails = (*Container)(nil)
+	_ EndpointDetails = (*Folder)(nil)
 )
 
 // EndpointDetails provides additional context about an endpoint such as a Pod or Port.
@@ -377,4 +380,23 @@ func (n *K8sNode) Env() EndpointEnv {
 
 func (*K8sNode) Type() EndpointType {
 	return K8sNodeType
+}
+
+// Folder is a discovered filesystem directory.
+type Folder struct {
+	// Name is the directory name (basename).
+	Name string
+	// Path is the absolute path to the directory.
+	Path string
+}
+
+func (f *Folder) Env() EndpointEnv {
+	return EndpointEnv{
+		"name": f.Name,
+		"path": f.Path,
+	}
+}
+
+func (*Folder) Type() EndpointType {
+	return FolderType
 }
